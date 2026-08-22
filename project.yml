@@ -42,7 +42,17 @@ targets:
           DEST="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/smc-helper"
           if [ -f "$SRC" ]; then
             cp -f "$SRC" "$DEST"
-            codesign --force --options runtime --sign - "$DEST" || true
+            # Re-sign with whatever identity this build is using, not a
+            # hard-coded ad-hoc one: notarization requires every Mach-O in the
+            # bundle to carry the Developer ID signature and a secure
+            # timestamp, and signing ad-hoc here would silently throw away the
+            # good signature Xcode just produced.
+            IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
+            if [ "$IDENTITY" = "-" ]; then
+              codesign --force --options runtime --sign - "$DEST"
+            else
+              codesign --force --options runtime --timestamp --sign "$IDENTITY" "$DEST"
+            fi
           fi
 
   smc-helper:

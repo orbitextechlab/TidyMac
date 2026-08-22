@@ -30,6 +30,9 @@ magick "$TMP/rounded.png" \( +clone -background black -shadow 55x24+0+10 \) \
 magick "$TMP/bg.png" \
   "$TMP/icon.png"     -geometry +78+96   -composite \
   "$TMP/shadowed.png" -geometry +592+118 -composite \
-  social-preview.png
+  -strip social-preview.png
 
-echo "wrote $(pwd)/social-preview.png"
+# JPEG alternate: some upload paths are happier with a smaller payload.
+magick social-preview.png -quality 92 -strip social-preview.jpg
+
+echo "wrote $(pwd)/social-preview.png and social-preview.jpg"

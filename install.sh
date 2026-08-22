@@ -104,19 +104,33 @@ step "Installing to $PREFIX"
 $sudo rm -rf "$TARGET"
 $sudo ditto "$tmp/unpacked/$APP_NAME" "$TARGET" || die "could not install into $PREFIX."
 
-# Release builds are ad-hoc signed rather than notarized, so macOS would report
-# the freshly downloaded app as damaged until the quarantine flag is cleared.
-step "Clearing the download quarantine flag"
-$sudo xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+# Releases from v0.2.0 on are signed and notarized, so Gatekeeper accepts them
+# as they are. Rather than stripping quarantine unconditionally — which would
+# also silence a genuinely bad download — ask Gatekeeper first and only fall
+# back for the older, unnotarized releases.
+step "Checking with Gatekeeper"
+gatekeeper=$(spctl --assess --type execute "$TARGET" 2>&1) && verdict="accepted" || verdict="rejected"
 
 version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
           "$TARGET/Contents/Info.plist" 2>/dev/null || echo "?")
 
-say ""
-say "${green}TidyMac $version installed${off} at $TARGET"
-say ""
-say "Open it with:  ${bold}open -a TidyMac${off}"
-say ""
-say "${dim}TidyMac is not notarized by Apple. This installer cleared the quarantine"
-say "flag on your behalf, which is what lets macOS open it. If you would rather"
-say "not take that on trust, build from source: https://github.com/$REPO${off}"
+if [ "$verdict" = "accepted" ]; then
+  say "    ${green}notarized by Apple${off}"
+  say ""
+  say "${green}TidyMac $version installed${off} at $TARGET"
+  say ""
+  say "Open it with:  ${bold}open -a TidyMac${off}"
+else
+  say "    ${dim}$gatekeeper${off}"
+  say "    this release is not notarized; clearing the quarantine flag"
+  $sudo xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+  say ""
+  say "${green}TidyMac $version installed${off} at $TARGET"
+  say ""
+  say "Open it with:  ${bold}open -a TidyMac${off}"
+  say ""
+  say "${dim}This build is not notarized by Apple, so the installer cleared the"
+  say "quarantine flag on your behalf — that is what lets macOS open it. Install"
+  say "the latest release instead to get a notarized build, or build from source:"
+  say "https://github.com/$REPO${off}"
+fi

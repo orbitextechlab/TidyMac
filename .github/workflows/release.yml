@@ -14,8 +14,11 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish
+    name: Build, notarize and publish
     runs-on: macos-15
+
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +30,70 @@ jobs:
         id: v
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}"        >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check signing secrets are present
+        run: |
+          missing=""
+          for s in APPLE_TEAM_ID MACOS_CERT_P12 MACOS_CERT_PASSWORD \
+                   APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+            eval "v=\${$s}"
+            [ -n "$v" ] || missing="$missing $s"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secrets:$missing"
+            echo "A release has to be signed and notarized; see CONTRIBUTING.md."
+            exit 1
+          fi
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+
+      # A throwaway keychain keeps the signing key out of the runner's login
+      # keychain and dies with the job.
+      - name: Import the signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          # Without this, codesign blocks on a UI prompt that nobody can answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Store the notarization credentials
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/key.p8"
+          xcrun notarytool store-credentials TidyMacNotary \
+            --key "$RUNNER_TEMP/key.p8" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --keychain "$RUNNER_TEMP/build.keychain"
+          rm -f "$RUNNER_TEMP/key.p8"
 
       - name: Install tools
         run: brew install xcodegen create-dmg
@@ -36,8 +101,6 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
-      # The tag is the source of truth for the version the app reports in its
-      # About box, so it is injected here rather than kept in sync by hand.
       - name: Build
         run: |
           set -o pipefail
@@ -50,16 +113,20 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             ARCHS="arm64 x86_64" \
             ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=$TEAM_ID \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
-      - name: Stage the app
+      - name: Check the build before submitting it to Apple
         id: stage
         run: |
+          set -euo pipefail
           APP=$(find .derived -name TidyMac.app -maxdepth 5 | head -1)
           test -n "$APP" || { echo "no app bundle produced"; exit 1; }
           test -x "$APP/Contents/MacOS/smc-helper" || { echo "smc-helper not embedded"; exit 1; }
+
           # A release that only runs on the runner's own architecture is a
           # release half the Macs out there cannot open.
           for bin in TidyMac smc-helper; do
@@ -70,57 +137,85 @@ jobs:
               *) echo "$bin is not universal ($archs)"; exit 1 ;;
             esac
           done
+
           got=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
           test "$got" = "${{ steps.v.outputs.version }}" || {
             echo "bundle version is $got, expected ${{ steps.v.outputs.version }}"; exit 1; }
-          mkdir -p dist/stage
-          cp -R "$APP" dist/stage/
+
+          # Notarization rejects any Mach-O that is ad-hoc signed or missing the
+          # hardened runtime, so catch it here where the error is readable.
+          codesign --verify --strict --deep --verbose=2 "$APP"
+          for bin in "$APP/Contents/MacOS/TidyMac" \
+                     "$APP/Contents/MacOS/smc-helper" \
+                     "$APP/Contents/Resources/smc-helper"; do
+            info=$(codesign -dv --verbose=2 "$bin" 2>&1)
+            echo "$info" | grep -q "adhoc" && { echo "$bin is ad-hoc signed"; exit 1; }
+            echo "$info" | grep -q "flags=.*runtime" || { echo "$bin lacks hardened runtime"; exit 1; }
+            echo "$info" | grep -q "Authority=Developer ID Application" || {
+              echo "$bin is not signed with Developer ID"; exit 1; }
+          done
+
           echo "app=$APP" >> "$GITHUB_OUTPUT"
 
-      # create-dmg drives Finder over AppleScript to place the icons. That is
-      # the only step here that depends on a window server, so if it ever fails
-      # on the runner we still ship a plain disk image rather than no release.
+      # Notarize the app itself first, then staple the ticket into the bundle,
+      # so the copy inside the disk image is valid offline. Notarizing only the
+      # disk image would leave the extracted app unstapled.
+      - name: Notarize the app
+        run: |
+          set -euo pipefail
+          APP="${{ steps.stage.outputs.app }}"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --keychain-profile TidyMacNotary \
+            --keychain "$RUNNER_TEMP/build.keychain" \
+            --wait --timeout 30m
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+
+      - name: Stage the stapled app
+        run: |
+          mkdir -p dist/stage
+          cp -R "${{ steps.stage.outputs.app }}" dist/stage/
+
       - name: Build the disk image
         env:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
-          if create-dmg \
-              --volname "TidyMac" \
-              --background "Design/DMG/dmg-background.tiff" \
-              --window-pos 200 120 \
-              --window-size 660 400 \
-              --icon-size 128 \
-              --icon "TidyMac.app" 165 185 \
-              --app-drop-link 495 185 \
-              --hide-extension "TidyMac.app" \
-              --no-internet-enable \
-              "dist/TidyMac-$VERSION.dmg" \
-              "dist/stage/"; then
-            echo "create-dmg succeeded"
-          else
-            echo "::warning::create-dmg failed, falling back to a plain hdiutil image"
-            ln -s /Applications dist/stage/Applications
-            hdiutil create \
-              -volname "TidyMac" \
-              -srcfolder dist/stage \
-              -ov -format UDZO \
-              "dist/TidyMac-$VERSION.dmg"
-          fi
+          create-dmg \
+            --volname "TidyMac" \
+            --background "Design/DMG/dmg-background.tiff" \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 128 \
+            --icon "TidyMac.app" 165 185 \
+            --app-drop-link 495 185 \
+            --hide-extension "TidyMac.app" \
+            --no-internet-enable \
+            "dist/TidyMac-$VERSION.dmg" \
+            "dist/stage/"
 
-      # A zip alongside the dmg: scripted installs do not have to mount an image.
+      # The disk image is a separate distributable and carries its own ticket,
+      # so Gatekeeper is satisfied before the user even copies the app out.
+      - name: Notarize the disk image
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "dist/TidyMac-$VERSION.dmg" \
+            --keychain-profile TidyMacNotary \
+            --keychain "$RUNNER_TEMP/build.keychain" \
+            --wait --timeout 30m
+          xcrun stapler staple "dist/TidyMac-$VERSION.dmg"
+          xcrun stapler validate "dist/TidyMac-$VERSION.dmg"
+
+      # Zipped from the stapled bundle, so the zip download is offline-valid too.
       - name: Build the zip
         env:
           VERSION: ${{ steps.v.outputs.version }}
-        run: ditto -c -k --keepParent "${{ steps.stage.outputs.app }}" "dist/TidyMac-$VERSION.zip"
+        run: ditto -c -k --keepParent "dist/stage/TidyMac.app" "dist/TidyMac-$VERSION.zip"
 
-      - name: Checksums
-        run: |
-          cd dist
-          shasum -a 256 TidyMac-*.dmg TidyMac-*.zip > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Verify the disk image mounts and contains the app
+      - name: Verify Gatekeeper accepts the result
         env:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
@@ -128,8 +223,17 @@ jobs:
           hdiutil attach "dist/TidyMac-$VERSION.dmg" -mountpoint /tmp/tidymac-dmg -nobrowse -quiet
           test -d /tmp/tidymac-dmg/TidyMac.app || { echo "app missing from dmg"; exit 1; }
           test -e /tmp/tidymac-dmg/Applications || { echo "Applications drop link missing"; exit 1; }
+          xcrun stapler validate /tmp/tidymac-dmg/TidyMac.app
+          # This is the check that decides whether a downloaded copy opens.
+          spctl --assess --type execute --verbose=4 /tmp/tidymac-dmg/TidyMac.app
           hdiutil detach /tmp/tidymac-dmg -quiet
-          echo "disk image verified"
+          echo "disk image notarized and accepted by Gatekeeper"
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 TidyMac-*.dmg TidyMac-*.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Release notes
         env:
@@ -139,37 +243,26 @@ jobs:
           ## Install
 
           Download \`TidyMac-$VERSION.dmg\` below, open it, and drag **TidyMac** into
-          **Applications**.
+          **Applications**. It is signed and notarized by Apple, so it opens on a
+          double-click with no warnings and no workarounds.
 
-          Or from the command line:
-
-          \`\`\`bash
-          gh release download ${{ steps.v.outputs.tag }} --repo orbitextechlab/TidyMac --pattern '*.dmg'
-          hdiutil attach TidyMac-$VERSION.dmg
-          cp -R /Volumes/TidyMac/TidyMac.app /Applications/
-          hdiutil detach /Volumes/TidyMac
-          xattr -dr com.apple.quarantine /Applications/TidyMac.app
-          \`\`\`
-
-          ## First launch
-
-          These builds are **ad-hoc signed and not notarized**, because notarizing
-          requires a paid Apple Developer ID. macOS will refuse to open the app until
-          you clear the download quarantine flag:
+          Or in one command:
 
           \`\`\`bash
-          xattr -dr com.apple.quarantine /Applications/TidyMac.app
+          curl -fsSL https://raw.githubusercontent.com/orbitextechlab/TidyMac/main/install.sh | bash
           \`\`\`
-
-          Without that, Gatekeeper reports the app as damaged or from an unidentified
-          developer. If you would rather not run that command, build from source
-          instead — see the README.
 
           ## Verifying the download
 
           \`\`\`bash
           shasum -a 256 -c SHA256SUMS.txt
+          spctl --assess --type execute -vv /Applications/TidyMac.app
           \`\`\`
+
+          The second command should print \`accepted\` and
+          \`source=Notarized Developer ID\`.
+
+          Builds are universal — Apple Silicon and Intel.
           NOTES
           cat dist/notes.md
 
@@ -185,3 +278,7 @@ jobs:
             --title "TidyMac ${{ steps.v.outputs.version }}" \
             --notes-file dist/notes.md \
             --verify-tag
+
+      - name: Clean up the keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
