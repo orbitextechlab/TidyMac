@@ -48,6 +48,8 @@ jobs:
             -derivedDataPath .derived \
             MARKETING_VERSION=${{ steps.v.outputs.version }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             build
@@ -58,6 +60,19 @@ jobs:
           APP=$(find .derived -name TidyMac.app -maxdepth 5 | head -1)
           test -n "$APP" || { echo "no app bundle produced"; exit 1; }
           test -x "$APP/Contents/MacOS/smc-helper" || { echo "smc-helper not embedded"; exit 1; }
+          # A release that only runs on the runner's own architecture is a
+          # release half the Macs out there cannot open.
+          for bin in TidyMac smc-helper; do
+            archs=$(lipo -archs "$APP/Contents/MacOS/$bin")
+            echo "$bin: $archs"
+            case "$archs" in
+              *arm64*x86_64*|*x86_64*arm64*) ;;
+              *) echo "$bin is not universal ($archs)"; exit 1 ;;
+            esac
+          done
+          got=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
+          test "$got" = "${{ steps.v.outputs.version }}" || {
+            echo "bundle version is $got, expected ${{ steps.v.outputs.version }}"; exit 1; }
           mkdir -p dist/stage
           cp -R "$APP" dist/stage/
           echo "app=$APP" >> "$GITHUB_OUTPUT"

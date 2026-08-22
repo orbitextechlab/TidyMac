@@ -17,10 +17,32 @@
 
 ## Install
 
-**[Download the latest release](https://github.com/orbitextechlab/TidyMac/releases/latest)**, open
-the `.dmg`, and drag TidyMac into your Applications folder.
+### One command
 
-Or from the command line:
+```bash
+curl -fsSL https://raw.githubusercontent.com/orbitextechlab/TidyMac/main/install.sh | bash
+```
+
+This resolves the latest release, verifies the download against the published
+SHA-256 sum, installs into `/Applications`, and clears the quarantine flag
+described below. It refuses to install if the checksum does not match.
+
+Piping a script from the internet into a shell deserves a look first —
+[read install.sh](install.sh) before you run it. To pin a version or install
+elsewhere:
+
+```bash
+TIDYMAC_VERSION=v0.1.0 TIDYMAC_PREFIX=~/Applications \
+  bash <(curl -fsSL https://raw.githubusercontent.com/orbitextechlab/TidyMac/main/install.sh)
+```
+
+### Disk image
+
+**[Download the latest release](https://github.com/orbitextechlab/TidyMac/releases/latest)**,
+open the `.dmg`, and drag TidyMac into your Applications folder. Then clear the
+quarantine flag as described below.
+
+With `gh`:
 
 ```bash
 gh release download --repo orbitextechlab/TidyMac --pattern '*.dmg'
@@ -30,17 +52,10 @@ hdiutil detach /Volumes/TidyMac
 xattr -dr com.apple.quarantine /Applications/TidyMac.app
 ```
 
-Without `gh`, the same thing with `curl`:
-
-```bash
-curl -fsSL -o TidyMac.dmg \
-  "$(curl -fsSL https://api.github.com/repos/orbitextechlab/TidyMac/releases/latest \
-     | grep -o 'https://[^"]*\.dmg')"
-```
-
 Every release also ships a `.zip` of the app bundle, which is easier to unpack in
 a script than mounting a disk image, plus a `SHA256SUMS.txt` you can check with
-`shasum -a 256 -c SHA256SUMS.txt`.
+`shasum -a 256 -c SHA256SUMS.txt`. Builds are universal — Apple Silicon and
+Intel.
 
 ### macOS will refuse to open it at first
 

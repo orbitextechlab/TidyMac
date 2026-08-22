@@ -1,0 +1,46 @@
+<!-- GitHub social preview, 1280x640. The app icon and a screenshot are
+     composited on top by build-social-preview.sh; this file paints the
+     background, the wordmark and the strapline. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#332B23"/>
+      <stop offset="0.5" stop-color="#1D1915"/>
+      <stop offset="1" stop-color="#100D0A"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0.2" cy="0.32" r="0.6">
+      <stop offset="0" stop-color="#ED8A3C" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#ED8A3C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ED8A3C" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ED8A3C" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#warm)"/>
+
+  <!-- Icon slot is 150x150 at (78,96); the wordmark sits under it. -->
+  <text x="78" y="322" fill="#F7F0E6"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="74" font-weight="700" letter-spacing="-1">TidyMac</text>
+
+  <rect x="80" y="352" width="150" height="4" rx="2" fill="url(#rule)"/>
+
+  <text x="78" y="410" fill="#C9C0B6"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="27" font-weight="500">Clean up, monitor and cool</text>
+  <text x="78" y="448" fill="#C9C0B6"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="27" font-weight="500">your Mac — natively.</text>
+
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="500">
+    <rect x="78"  y="502" width="122" height="38" rx="19" fill="#ffffff" fill-opacity="0.06"/>
+    <text x="139" y="527" text-anchor="middle" fill="#A8A199">SwiftUI</text>
+    <rect x="212" y="502" width="150" height="38" rx="19" fill="#ffffff" fill-opacity="0.06"/>
+    <text x="287" y="527" text-anchor="middle" fill="#A8A199">Apache-2.0</text>
+    <rect x="374" y="502" width="152" height="38" rx="19" fill="#ffffff" fill-opacity="0.06"/>
+    <text x="450" y="527" text-anchor="middle" fill="#A8A199">macOS 14+</text>
+  </g>
+</svg>
