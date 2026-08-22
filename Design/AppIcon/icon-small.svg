@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3E352C"/>
+    <stop offset="0.52" stop-color="#221D18"/>
+    <stop offset="1" stop-color="#120F0C"/>
+  </linearGradient>
+  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity="0.11"/>
+    <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="0.46" cy="0.52" r="0.52">
+    <stop offset="0" stop-color="#ED8A3C" stop-opacity="0.26"/>
+    <stop offset="1" stop-color="#ED8A3C" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity="0.24"/>
+    <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.06"/>
+    <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#9E8365"/>
+    <stop offset="0.24" stop-color="#FFF4E4"/>
+    <stop offset="0.58" stop-color="#EAD6BC"/>
+    <stop offset="1" stop-color="#8F7355"/>
+  </linearGradient>
+  <linearGradient id="collar" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#6B4A2F"/>
+    <stop offset="0.28" stop-color="#D0A170"/>
+    <stop offset="1" stop-color="#5E4029"/>
+  </linearGradient>
+  <linearGradient id="bristle" x1="0.1" y1="0" x2="0.85" y2="1">
+    <stop offset="0" stop-color="#FFD08C"/>
+    <stop offset="0.42" stop-color="#F2953F"/>
+    <stop offset="1" stop-color="#D2661B"/>
+  </linearGradient>
+  <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#F2953F" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#F2953F" stop-opacity="0"/>
+  </linearGradient>
+
+  <clipPath id="body"><path d="M924.00 512.00 L924.00 640.59 C924.00 722.19 924.00 763.00 910.11 806.92 C892.66 854.88 854.88 892.66 806.92 910.11 C763.00 924.00 722.19 924.00 640.59 924.00 L383.41 924.00 C301.81 924.00 261.00 924.00 217.08 910.11 C169.12 892.66 131.34 854.88 113.89 806.92 C100.00 763.00 100.00 722.19 100.00 640.59 L100.00 383.41 C100.00 301.81 100.00 261.00 113.89 217.08 C131.34 169.12 169.12 131.34 217.08 113.89 C261.00 100.00 301.81 100.00 383.41 100.00 L640.59 100.00 C722.19 100.00 763.00 100.00 806.92 113.89 C854.88 131.34 892.66 169.12 910.11 217.08 C924.00 261.00 924.00 301.81 924.00 383.41 Z"/></clipPath>
+</defs>
+  <path d="M924.00 512.00 L924.00 640.59 C924.00 722.19 924.00 763.00 910.11 806.92 C892.66 854.88 854.88 892.66 806.92 910.11 C763.00 924.00 722.19 924.00 640.59 924.00 L383.41 924.00 C301.81 924.00 261.00 924.00 217.08 910.11 C169.12 892.66 131.34 854.88 113.89 806.92 C100.00 763.00 100.00 722.19 100.00 640.59 L100.00 383.41 C100.00 301.81 100.00 261.00 113.89 217.08 C131.34 169.12 169.12 131.34 217.08 113.89 C261.00 100.00 301.81 100.00 383.41 100.00 L640.59 100.00 C722.19 100.00 763.00 100.00 806.92 113.89 C854.88 131.34 892.66 169.12 910.11 217.08 C924.00 261.00 924.00 301.81 924.00 383.41 Z" fill="url(#base)"/>
+  <g clip-path="url(#body)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow)"/>
+    <rect x="100" y="100" width="824" height="440" fill="url(#sheen)"/>
+    <g fill="#FFE3B8">
+      <path d="M 286 356 q 30 -140 60 0 q 140 30 0 60 q -30 140 -60 0 q -140 -30 0 -60 Z"/>
+    </g>
+    <g transform="translate(596,470) rotate(29) scale(1.00)">
+      <rect x="-25" y="-292" width="50" height="356" rx="25" fill="url(#wood)"/>
+      <rect x="-72" y="36" width="144" height="58" rx="21" fill="url(#collar)"/>
+      <path d="M -88 86 L 88 86 L 158 264 Q 170 294 138 299 Q 0 317 -138 299 Q -170 294 -158 264 Z" fill="url(#bristle)"/>
+      <path d="M -92 124 Q 0 136 92 124" fill="none" stroke="#000000" stroke-opacity="0.28" stroke-width="26" stroke-linecap="round"/>
+    </g>
+  </g>
+  <path d="M924.00 512.00 L924.00 640.59 C924.00 722.19 924.00 763.00 910.11 806.92 C892.66 854.88 854.88 892.66 806.92 910.11 C763.00 924.00 722.19 924.00 640.59 924.00 L383.41 924.00 C301.81 924.00 261.00 924.00 217.08 910.11 C169.12 892.66 131.34 854.88 113.89 806.92 C100.00 763.00 100.00 722.19 100.00 640.59 L100.00 383.41 C100.00 301.81 100.00 261.00 113.89 217.08 C131.34 169.12 169.12 131.34 217.08 113.89 C261.00 100.00 301.81 100.00 383.41 100.00 L640.59 100.00 C722.19 100.00 763.00 100.00 806.92 113.89 C854.88 131.34 892.66 169.12 910.11 217.08 C924.00 261.00 924.00 301.81 924.00 383.41 Z" fill="none" stroke="url(#rim)" stroke-width="3"/>
+</svg>

@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in TidyMac does not work the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app
+      options:
+        - Smart Scan / System Junk
+        - Xcode Junk
+        - Large Files
+        - Duplicates
+        - Space Lens
+        - Uninstaller
+        - Maintenance
+        - Startup Items
+        - Processes
+        - Fans
+        - Sensors
+        - Permissions
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "e.g. 15.2"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Mac model
+      description: "Output of `sysctl -n hw.model` — useful for Fans and Sensors issues."
+      placeholder: "e.g. Mac15,3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        Logs or screenshots if you have them. Please redact file paths you would
+        rather not publish.

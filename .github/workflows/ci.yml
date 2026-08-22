@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # The .xcodeproj is generated from project.yml and not committed, so it
+      # has to be produced before anything can build.
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project TidyMac.xcodeproj \
+            -scheme TidyMac \
+            -configuration Release \
+            -derivedDataPath .derived \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            build
+
+      - name: Verify the app bundle
+        run: |
+          APP=$(find .derived -name TidyMac.app -maxdepth 5 | head -1)
+          test -n "$APP" || { echo "no app bundle produced"; exit 1; }
+          test -f "$APP/Contents/Resources/AppIcon.icns" || { echo "app icon missing"; exit 1; }
+          test -x "$APP/Contents/MacOS/smc-helper" || { echo "smc-helper not embedded"; exit 1; }
+          echo "built $APP"

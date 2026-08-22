@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something TidyMac should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: >
+        Describe the situation you run into, not just the feature you want. The
+        problem is usually more useful than the proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: destructive
+    attributes:
+      label: Does this delete or modify anything on disk?
+      options:
+        - label: Yes, this would remove or change user files or system state
