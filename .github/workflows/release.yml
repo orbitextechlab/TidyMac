@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: v
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}"        >> "$GITHUB_OUTPUT"
+
+      - name: Install tools
+        run: brew install xcodegen create-dmg
+
+      - name: Generate project
+        run: xcodegen generate
+
+      # The tag is the source of truth for the version the app reports in its
+      # About box, so it is injected here rather than kept in sync by hand.
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project TidyMac.xcodeproj \
+            -scheme TidyMac \
+            -configuration Release \
+            -derivedDataPath .derived \
+            MARKETING_VERSION=${{ steps.v.outputs.version }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            build
+
+      - name: Stage the app
+        id: stage
+        run: |
+          APP=$(find .derived -name TidyMac.app -maxdepth 5 | head -1)
+          test -n "$APP" || { echo "no app bundle produced"; exit 1; }
+          test -x "$APP/Contents/MacOS/smc-helper" || { echo "smc-helper not embedded"; exit 1; }
+          mkdir -p dist/stage
+          cp -R "$APP" dist/stage/
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+
+      # create-dmg drives Finder over AppleScript to place the icons. That is
+      # the only step here that depends on a window server, so if it ever fails
+      # on the runner we still ship a plain disk image rather than no release.
+      - name: Build the disk image
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          if create-dmg \
+              --volname "TidyMac" \
+              --background "Design/DMG/dmg-background.tiff" \
+              --window-pos 200 120 \
+              --window-size 660 400 \
+              --icon-size 128 \
+              --icon "TidyMac.app" 165 185 \
+              --app-drop-link 495 185 \
+              --hide-extension "TidyMac.app" \
+              --no-internet-enable \
+              "dist/TidyMac-$VERSION.dmg" \
+              "dist/stage/"; then
+            echo "create-dmg succeeded"
+          else
+            echo "::warning::create-dmg failed, falling back to a plain hdiutil image"
+            ln -s /Applications dist/stage/Applications
+            hdiutil create \
+              -volname "TidyMac" \
+              -srcfolder dist/stage \
+              -ov -format UDZO \
+              "dist/TidyMac-$VERSION.dmg"
+          fi
+
+      # A zip alongside the dmg: scripted installs do not have to mount an image.
+      - name: Build the zip
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: ditto -c -k --keepParent "${{ steps.stage.outputs.app }}" "dist/TidyMac-$VERSION.zip"
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 TidyMac-*.dmg TidyMac-*.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Verify the disk image mounts and contains the app
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          hdiutil attach "dist/TidyMac-$VERSION.dmg" -mountpoint /tmp/tidymac-dmg -nobrowse -quiet
+          test -d /tmp/tidymac-dmg/TidyMac.app || { echo "app missing from dmg"; exit 1; }
+          test -e /tmp/tidymac-dmg/Applications || { echo "Applications drop link missing"; exit 1; }
+          hdiutil detach /tmp/tidymac-dmg -quiet
+          echo "disk image verified"
+
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          cat > dist/notes.md <<NOTES
+          ## Install
+
+          Download \`TidyMac-$VERSION.dmg\` below, open it, and drag **TidyMac** into
+          **Applications**.
+
+          Or from the command line:
+
+          \`\`\`bash
+          gh release download ${{ steps.v.outputs.tag }} --repo orbitextechlab/TidyMac --pattern '*.dmg'
+          hdiutil attach TidyMac-$VERSION.dmg
+          cp -R /Volumes/TidyMac/TidyMac.app /Applications/
+          hdiutil detach /Volumes/TidyMac
+          xattr -dr com.apple.quarantine /Applications/TidyMac.app
+          \`\`\`
+
+          ## First launch
+
+          These builds are **ad-hoc signed and not notarized**, because notarizing
+          requires a paid Apple Developer ID. macOS will refuse to open the app until
+          you clear the download quarantine flag:
+
+          \`\`\`bash
+          xattr -dr com.apple.quarantine /Applications/TidyMac.app
+          \`\`\`
+
+          Without that, Gatekeeper reports the app as damaged or from an unidentified
+          developer. If you would rather not run that command, build from source
+          instead — see the README.
+
+          ## Verifying the download
+
+          \`\`\`bash
+          shasum -a 256 -c SHA256SUMS.txt
+          \`\`\`
+          NOTES
+          cat dist/notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" \
+            dist/TidyMac-*.dmg \
+            dist/TidyMac-*.zip \
+            dist/SHA256SUMS.txt \
+            --repo "${{ github.repository }}" \
+            --title "TidyMac ${{ steps.v.outputs.version }}" \
+            --notes-file dist/notes.md \
+            --verify-tag

@@ -1,0 +1,46 @@
+<!-- Background for the installer disk image. 660x400 points, which must match
+     the window size passed to create-dmg in .github/workflows/release.yml.
+     Finder draws the TidyMac.app and Applications icons on top of this, at the
+     coordinates that workflow specifies, so the two icon slots are left empty
+     here and only the arrow between them is painted. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A241E"/>
+      <stop offset="0.55" stop-color="#1C1814"/>
+      <stop offset="1" stop-color="#131009"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#ED8A3C" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#ED8A3C" stop-opacity="0"/>
+    </radialGradient>
+    <!-- userSpaceOnUse: a perfectly horizontal stroke has a zero-height
+         bounding box, which makes an objectBoundingBox gradient degenerate and
+         paint nothing at all. -->
+    <linearGradient id="arrow" gradientUnits="userSpaceOnUse" x1="258" y1="0" x2="400" y2="0">
+      <stop offset="0" stop-color="#F2953F" stop-opacity="0.25"/>
+      <stop offset="0.55" stop-color="#F2953F" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFC271"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <rect width="660" height="400" fill="url(#warm)"/>
+
+  <text x="330" y="62" text-anchor="middle" fill="#F5EDE3"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="27" font-weight="600" letter-spacing="0.3">TidyMac</text>
+  <text x="330" y="90" text-anchor="middle" fill="#A8A199"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="14">Drag the app into your Applications folder</text>
+
+  <!-- Arrow spans the gap between the two icon slots (centres at x=165 and x=495). -->
+  <g transform="translate(0,185)">
+    <path d="M 262 0 L 368 0" fill="none" stroke="url(#arrow)" stroke-width="11" stroke-linecap="round"/>
+    <path d="M 360 -19 L 398 0 L 360 19 Z" fill="#FFC271"/>
+  </g>
+
+  <text x="330" y="345" text-anchor="middle" fill="#6E6862"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="11.5">Not notarized — see the README if macOS refuses to open it</text>
+</svg>

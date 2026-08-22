@@ -6,6 +6,7 @@
 
 **A native macOS cleanup, monitoring and fan-control app — written in SwiftUI.**
 
+[![Download](https://img.shields.io/github/v/release/orbitextechlab/TidyMac?label=download&color=ED8A3C)](https://github.com/orbitextechlab/TidyMac/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)](#requirements)
 [![CI](https://github.com/orbitextechlab/TidyMac/actions/workflows/ci.yml/badge.svg)](https://github.com/orbitextechlab/TidyMac/actions/workflows/ci.yml)
@@ -13,6 +14,49 @@
 <img src="docs/screenshot-home.png" width="820" alt="TidyMac home screen">
 
 </div>
+
+## Install
+
+**[Download the latest release](https://github.com/orbitextechlab/TidyMac/releases/latest)**, open
+the `.dmg`, and drag TidyMac into your Applications folder.
+
+Or from the command line:
+
+```bash
+gh release download --repo orbitextechlab/TidyMac --pattern '*.dmg'
+hdiutil attach TidyMac-*.dmg
+cp -R /Volumes/TidyMac/TidyMac.app /Applications/
+hdiutil detach /Volumes/TidyMac
+xattr -dr com.apple.quarantine /Applications/TidyMac.app
+```
+
+Without `gh`, the same thing with `curl`:
+
+```bash
+curl -fsSL -o TidyMac.dmg \
+  "$(curl -fsSL https://api.github.com/repos/orbitextechlab/TidyMac/releases/latest \
+     | grep -o 'https://[^"]*\.dmg')"
+```
+
+Every release also ships a `.zip` of the app bundle, which is easier to unpack in
+a script than mounting a disk image, plus a `SHA256SUMS.txt` you can check with
+`shasum -a 256 -c SHA256SUMS.txt`.
+
+### macOS will refuse to open it at first
+
+Releases are **ad-hoc signed and not notarized** — notarization requires a paid
+Apple Developer ID, which this project does not have. macOS therefore quarantines
+the download and reports the app as damaged or from an unidentified developer.
+Clearing the quarantine flag is what fixes it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/TidyMac.app
+```
+
+That command is not a workaround for a broken app; it tells macOS you accept that
+the binary is not signed by a registered developer. If you would rather not take
+that on trust, [build it from source](#building) — the result is identical and
+never gets quarantined.
 
 ## What it does
 
