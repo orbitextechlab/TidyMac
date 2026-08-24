@@ -68,6 +68,11 @@ enum DiskMonitor {
     struct Snapshot: Equatable {
         let usedBytes: Int64
         let totalBytes: Int64
+        /// Space macOS counts as available but has not actually freed: mostly
+        /// local Time Machine snapshots and evictable iCloud files. It is the
+        /// gap between "important usage" availability, which includes it, and
+        /// the raw free space Finder reports.
+        var purgeableBytes: Int64 = 0
         var usedFraction: Double { totalBytes > 0 ? Double(usedBytes) / Double(totalBytes) : 0 }
     }
 
@@ -80,7 +85,14 @@ enum DiskMonitor {
             return Snapshot(usedBytes: 0, totalBytes: 0)
         }
         let available = values.volumeAvailableCapacityForImportantUsage ?? 0
-        return Snapshot(usedBytes: Int64(total) - available, totalBytes: Int64(total))
+        // Raw free space excludes purgeable; the difference is what macOS is
+        // holding on to. Clamped at zero: the two figures are sampled from
+        // different accounting and can cross briefly.
+        let raw = (try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey]))?
+            .volumeAvailableCapacity ?? Int(available)
+        let purgeable = max(0, available - Int64(raw))
+        return Snapshot(usedBytes: Int64(total) - available, totalBytes: Int64(total),
+                        purgeableBytes: purgeable)
     }
 }
 

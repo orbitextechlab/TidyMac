@@ -50,18 +50,28 @@ final class AppUninstaller {
     }
 
     /// Locate support files that belong to an app, matched by bundle identifier.
+    /// The Library folders apps scatter support files across. Shared with
+    /// `OrphanScanner` on purpose: leftovers and orphans must be found in
+    /// exactly the same places, or the app could offer to remove something in
+    /// one screen that the other cannot account for.
+    static let supportSearchPaths = [
+        "Library/Application Support",
+        "Library/Caches",
+        "Library/Preferences",
+        "Library/Logs",
+        "Library/Containers",
+        "Library/Saved Application State",
+        "Library/WebKit",
+        "Library/HTTPStorages",
+    ]
+
+    static func supportSearchDirs(home: URL) -> [URL] {
+        supportSearchPaths.map { home.appendingPathComponent($0) }
+    }
+
     func leftovers(for app: InstalledApp) -> [Leftover] {
         let home = fileManager.homeDirectoryForCurrentUser
-        let searchDirs = [
-            "Library/Application Support",
-            "Library/Caches",
-            "Library/Preferences",
-            "Library/Logs",
-            "Library/Containers",
-            "Library/Saved Application State",
-            "Library/WebKit",
-            "Library/HTTPStorages",
-        ].map { home.appendingPathComponent($0) }
+        let searchDirs = Self.supportSearchDirs(home: home)
 
         var found: [Leftover] = []
         let bundleNeedle = app.bundleID.lowercased()

@@ -5,6 +5,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var nav: Navigation
 
     var body: some View {
         ScrollView {
@@ -15,8 +16,11 @@ struct DashboardView: View {
                     .staggeredEntrance(1)
                 statRow
                     .staggeredEntrance(2)
+                if state.disk.purgeableBytes > 1_000_000_000 {
+                    purgeableSection.staggeredEntrance(3)
+                }
                 if !state.temperatures.isEmpty {
-                    temperatureSection.staggeredEntrance(3)
+                    temperatureSection.staggeredEntrance(4)
                 }
                 if !state.fans.isEmpty {
                     fanSection.staggeredEntrance(4)
@@ -117,6 +121,34 @@ struct DashboardView: View {
     }
 
     // MARK: - Detail sections
+
+    /// Purgeable space is explained, not offered as something to clean. macOS
+    /// owns this storage and frees it on its own when the disk fills up; an app
+    /// cannot select or trash it, and presenting it as a cleanup category would
+    /// imply otherwise. Only shown above a gigabyte, where it is worth knowing.
+    private var purgeableSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "Purgeable Space")
+            GlassCard {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(Format.bytes(state.disk.purgeableBytes)) held by macOS")
+                            .font(.system(size: 13, weight: .semibold))
+                            .monospacedDigit()
+                        Text("Mostly local Time Machine snapshots and cached iCloud files. Finder counts this as free, and macOS releases it automatically when the disk runs low — there is nothing to clean here. Thinning snapshots in Maintenance is the one way to reclaim it sooner.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Maintenance") { nav.section = .maintenance }
+                }
+            }
+        }
+    }
 
     private var temperatureSection: some View {
         VStack(alignment: .leading, spacing: 8) {
