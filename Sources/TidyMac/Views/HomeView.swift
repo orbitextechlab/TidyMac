@@ -3,14 +3,23 @@ import SwiftUI
 /// Landing screen: greeting, the Smart Scan hero with its animated orb,
 /// quick stats and shortcuts into the specialised tools.
 struct HomeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var nav: Navigation
 
     private let engine = CleaningEngine()
 
-    private enum ScanPhase { case idle, scanning, done }
+    /// The hero's state machine. `review` means scan results are on screen
+    /// and nothing has been removed; `cleaning`/`success` only occur for the
+    /// safe-items cleanup started from Home itself — the full review flow
+    /// still lives in the cleaner screens.
+    private enum ScanPhase { case idle, scanning, review, cleaning, success }
 
     @State private var phase: ScanPhase = .idle
+    @State private var freedBytes: Int64 = 0
+    @State private var cleanedCount = 0
+    @State private var leftoverCount = 0
+    @State private var confettiBurst = 0
     @State private var progressText = ""
     @State private var progressFraction: Double = 0
     @State private var cancelFlag = CancelFlag()
@@ -85,9 +94,11 @@ struct HomeView: View {
         switch phase {
         case .idle: return "Your Mac deserves a sweep"
         case .scanning: return "Looking through caches and junk…"
-        case .done:
+        case .review:
             if let total = totalJunk, total > 0 { return "\(Format.bytes(total)) can be cleaned" }
             return "Nothing to clean — all tidy"
+        case .cleaning: return "Sweeping safe items…"
+        case .success: return "Freed \(Format.bytes(freedBytes))"
         }
     }
 
@@ -95,7 +106,12 @@ struct HomeView: View {
         switch phase {
         case .idle: return "One pass sizes up caches, logs, developer junk, mail attachments and more."
         case .scanning: return progressText.isEmpty ? "Preparing…" : "Scanning \(progressText)…"
-        case .done: return "Review each category before anything is removed — nothing is deleted automatically."
+        case .review: return "Review each category before anything is removed — nothing is deleted automatically."
+        case .cleaning: return "Moving caches, logs and developer junk to the Trash — recoverable until you empty it."
+        case .success:
+            var text = "Moved \(cleanedCount) items to the Trash."
+            if leftoverCount > 0 { text += " \(leftoverCount) needed a closer look — see the cleanup screens." }
+            return text
         }
     }
 
@@ -103,24 +119,32 @@ struct HomeView: View {
         GlassCard(padding: 0) {
             HStack(spacing: 30) {
                 orb
+                // The orb stays mounted as the hero's anchor; only this
+                // column swaps per phase, rising in and dissolving out.
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("SMART SCAN")
+                    Text(phase == .success ? "ALL CLEAN" : "SMART SCAN")
                         .font(.system(size: 10.5, weight: .semibold))
                         .tracking(1.4)
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(phase == .success ? Theme.ok : Theme.accent)
                     Text(heroTitle)
                         .font(.system(size: 20, weight: .bold))
-                        .contentTransition(.opacity)
+                        .monospacedDigit()
+                        .contentTransition(reduceMotion ? .opacity : .numericText())
                     Text(heroSub)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)
                         .frame(maxWidth: 520, alignment: .leading)
-                    if phase == .done {
+                    if phase == .review {
                         foundChips.padding(.top, 6)
+                            .transition(.opacity)
                     }
                     heroButtons.padding(.top, 10)
                 }
+                .id(phase)
+                .transition(reduceMotion ? .opacity : .asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 12)).combined(with: .scale(scale: 0.985)),
+                    removal: .opacity))
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 30)
@@ -132,16 +156,25 @@ struct HomeView: View {
                                startRadius: 0, endRadius: 520)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: phase)
+        // Celebration bursts from the orb; purely decorative, so it neither
+        // intercepts clicks nor renders under Reduce Motion.
+        .overlay {
+            ConfettiView(burst: confettiBurst, origin: UnitPoint(x: 0.12, y: 0.45))
+        }
+        .animation(reduceMotion ? nil : Theme.Motion.gentle, value: phase)
     }
 
     /// The animated scan orb: a spinning conic ring around a dark core that
     /// shows the current state — sparkle, live percentage, or the result.
+    /// The ring's tint tracks the phase: accent while working, green once
+    /// the sweep has succeeded.
+    private var ringColor: Color { phase == .success ? Theme.ok : Theme.accent }
+
     private var orb: some View {
         ZStack {
             let ring = AngularGradient(
-                colors: [Theme.accent.opacity(0.05), Theme.accent.opacity(0.6),
-                         Theme.accent, Theme.accent.opacity(0.05)],
+                colors: [ringColor.opacity(0.05), ringColor.opacity(0.6),
+                         ringColor, ringColor.opacity(0.05)],
                 center: .center)
             // The glow never moves: it is radially soft, so rotating it would
             // look identical while forcing a blur re-render every frame.
@@ -154,10 +187,12 @@ struct HomeView: View {
             // which costs real CPU for something nobody is watching.
             Circle().fill(ring)
                 .frame(width: 148, height: 148)
-                .rotationEffect(.degrees(phase == .scanning ? 360 : 0))
-                .animation(phase == .scanning
-                           ? .linear(duration: 2.4).repeatForever(autoreverses: false)
-                           : .easeOut(duration: 0.4),
+                // Under Reduce Motion the ring holds still; the percentage
+                // readout in the core is the progress signal.
+                .rotationEffect(.degrees((phase == .scanning || phase == .cleaning) && !reduceMotion ? 360 : 0))
+                .animation(reduceMotion ? nil
+                           : (phase == .scanning || phase == .cleaning) ? Theme.Motion.orbit
+                           : Theme.Motion.gentle,
                            value: phase)
             Circle()
                 .fill(Theme.card)
@@ -181,13 +216,13 @@ struct HomeView: View {
                     .font(.system(size: 26, weight: .bold))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                    .animation(.snappy, value: progressFraction)
+                    .animation(reduceMotion ? nil : Theme.Motion.snappy, value: progressFraction)
                 Text("SCANNING")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.2)
                     .foregroundStyle(Theme.textSecondary)
             }
-        case .done:
+        case .review:
             if let total = totalJunk, total > 0 {
                 VStack(spacing: 1) {
                     Text(Format.bytes(total))
@@ -204,6 +239,12 @@ struct HomeView: View {
                     .font(.system(size: 32, weight: .semibold))
                     .foregroundStyle(Theme.ok)
             }
+        case .cleaning:
+            SpinnerRing(size: 30, lineWidth: 3)
+        case .success:
+            Image(systemName: "checkmark")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(Theme.ok)
         }
     }
 
@@ -246,7 +287,7 @@ struct HomeView: View {
                 .keyboardShortcut(.defaultAction)
             case .scanning:
                 Button("Stop") { cancelFlag.cancel() }
-            case .done:
+            case .review:
                 if let total = totalJunk, total > 0 {
                     Button {
                         nav.autoScanOnArrival = true
@@ -256,6 +297,17 @@ struct HomeView: View {
                             .padding(.horizontal, 8).padding(.vertical, 2)
                     }
                     .buttonStyle(.borderedProminent)
+                    if hasSafeItems {
+                        Button("Sweep Safe Items") { cleanSafeItems() }
+                            .help("Trash caches, logs and developer junk — the categories that never hold personal files. Recoverable from the Trash.")
+                    }
+                }
+                Button("Scan Again") { smartScan() }
+            case .cleaning:
+                EmptyView()
+            case .success:
+                Button("Done") {
+                    withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .idle }
                 }
                 Button("Scan Again") { smartScan() }
             }
@@ -325,13 +377,13 @@ struct HomeView: View {
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableCardStyle())
     }
 
     // MARK: - Actions
 
     private func smartScan() {
-        phase = .scanning
+        withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .scanning }
         progressText = ""
         progressFraction = 0
         let flag = CancelFlag()
@@ -353,7 +405,10 @@ struct HomeView: View {
             let dev = items.filter { devSet.contains($0.category) }.reduce(Int64(0)) { $0 + $1.sizeBytes }
             let system = items.reduce(Int64(0)) { $0 + $1.sizeBytes } - dev
             await MainActor.run {
-                guard !flag.isCancelled() else { phase = .idle; return }
+                guard !flag.isCancelled() else {
+                    withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .idle }
+                    return
+                }
                 systemJunkBytes = system
                 xcodeJunkBytes = dev
                 lastScanAt = Date().timeIntervalSince1970
@@ -361,7 +416,66 @@ struct HomeView: View {
                 // there shows them instantly instead of rescanning.
                 nav.smartScanItems = items
                 nav.smartScanAt = Date()
-                phase = .done
+                withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .review }
+                // A finished scan is a boundary worth a physical beat.
+                Haptics.success()
+            }
+        }
+    }
+
+    /// Whether the last scan found anything in the categories that are safe
+    /// to remove without review (never hold personal files, recoverable).
+    private var hasSafeItems: Bool {
+        nav.smartScanItems.contains { $0.category.isPreselected }
+    }
+
+    /// The one cleanup Home performs itself: trash the items in preselected
+    /// (safe) categories from the last scan. Everything else keeps requiring
+    /// the per-category review screens — this deliberately never touches a
+    /// category that can hold personal files.
+    private func cleanSafeItems() {
+        var safe = nav.smartScanItems.filter { $0.category.isPreselected }
+        guard !safe.isEmpty else { return }
+        for i in safe.indices { safe[i].isSelected = true }
+        // Take the safe items out of the shared cache *before* the work starts.
+        // The sidebar stays clickable during the sweep, and a cleaner screen
+        // that adopts these rows mid-flight would show files being deleted
+        // underneath it. Leftovers are put back when the result is known.
+        nav.smartScanItems.removeAll { $0.category.isPreselected }
+        withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .cleaning }
+        let engine = self.engine
+        let items = safe
+        Task.detached(priority: .userInitiated) {
+            let result = engine.trashSelected(items)
+            await MainActor.run {
+                // Anything not handled goes back into the shared cache so the
+                // cleaner screens still show it: admin-only items and skips.
+                let skippedSet = Set(result.skipped.map(\.path))
+                let leftovers = result.needsAdmin
+                    + items.filter { skippedSet.contains($0.url.path) }
+                nav.smartScanItems.append(contentsOf: leftovers)
+
+                // Refresh the review numbers from what actually remains.
+                let devSet = Set(CleaningEngine.developerJunkCategories)
+                let remaining = nav.smartScanItems
+                let devLeft = remaining.filter { devSet.contains($0.category) }
+                    .reduce(Int64(0)) { $0 + $1.sizeBytes }
+                xcodeJunkBytes = devLeft
+                systemJunkBytes = remaining.reduce(Int64(0)) { $0 + $1.sizeBytes } - devLeft
+
+                cleanedCount = result.trashedCount + result.deletedCount
+                leftoverCount = leftovers.count
+                freedBytes = result.trashedBytes + result.deletedBytes
+
+                // Celebrate only when something was actually removed. All
+                // items failing (no Full Disk Access, say) is not a success.
+                if cleanedCount > 0 {
+                    withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .success }
+                    confettiBurst += 1
+                    Haptics.successWithSound()
+                } else {
+                    withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { phase = .review }
+                }
             }
         }
     }

@@ -20,6 +20,12 @@ extension View {
 /// Standard card: flat fill with a hairline border.
 struct GlassCard<Content: View>: View {
     var padding: CGFloat = 16
+    /// Opt out for hero-sized cards where a hover lift would feel jumpy.
+    var hoverLift: Bool = false
+
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @ViewBuilder var content: Content
     var body: some View {
         content
@@ -27,12 +33,30 @@ struct GlassCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(Theme.card)
+                    .fill(hovering ? Theme.cardHover : Theme.card)
                     .overlay(
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
                             .strokeBorder(Theme.border, lineWidth: 1)
                     )
             )
+            .offset(y: hovering && !reduceMotion ? -1 : 0)
+            .onHover { inside in
+                guard hoverLift else { return }
+                withAnimation(reduceMotion ? nil : Theme.Motion.snappy) { hovering = inside }
+            }
+    }
+}
+
+/// Press acknowledgment for card-like buttons: a quick, tiny sink. Shared so
+/// every clickable tile in the app answers a press the same way.
+struct PressableCardStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(reduceMotion ? nil : Theme.Motion.press, value: configuration.isPressed)
     }
 }
 
@@ -58,14 +82,20 @@ struct NeuValueChip: View {
 private struct StaggeredEntrance: ViewModifier {
     let index: Int
     @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 16)
+            .offset(y: shown ? 0 : (reduceMotion ? 0 : 16))
             .onAppear {
-                withAnimation(.spring(duration: 0.55, bounce: 0.18)
-                    .delay(Double(index) * 0.07)) { shown = true }
+                // Decorative cascade — under Reduce Motion content just appears.
+                if reduceMotion {
+                    shown = true
+                } else {
+                    withAnimation(Theme.Motion.gentle
+                        .delay(Double(index) * 0.07)) { shown = true }
+                }
             }
     }
 }
@@ -207,8 +237,9 @@ struct SpinnerRing: View {
                 .trim(from: 0, to: 0.28)
                 .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(spinning ? 360 : 0))
-                .animation(.linear(duration: 0.8).repeatForever(autoreverses: false),
-                           value: spinning)
+                // Progress signal — keeps spinning under Reduce Motion, the
+                // way the system's own indeterminate indicator does.
+                .animation(Theme.Motion.spinner, value: spinning)
         }
         .frame(width: size, height: size)
         .onAppear { spinning = true }
@@ -257,6 +288,7 @@ struct ShimmerBlock: View {
     var radius: CGFloat = 5
 
     @State private var phase: CGFloat = -1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -272,9 +304,10 @@ struct ShimmerBlock: View {
             )
             .frame(width: width, height: height)
             .onAppear {
-                withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
+                // Decorative shimmer — the static skeleton block is enough
+                // under Reduce Motion.
+                guard !reduceMotion else { return }
+                withAnimation(Theme.Motion.shimmer) { phase = 1 }
             }
     }
 }
@@ -331,9 +364,9 @@ struct IndeterminateBar: View {
         .frame(height: height)
         .clipShape(Capsule())
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                phase = 1
-            }
+            // Progress signal — the sweep is the only "still working" cue on
+            // this bar, so it keeps moving under Reduce Motion.
+            withAnimation(Theme.Motion.progressSweep) { phase = 1 }
         }
     }
 }

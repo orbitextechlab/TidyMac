@@ -4,6 +4,7 @@ import SwiftUI
 /// sidebar (Cleanup / Hardware / Applications). The sidebar stays quiet:
 /// narrow, same surface family as the content, small rows.
 struct RootView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     enum Section: String, CaseIterable, Identifiable {
         case home = "Home"
         case dashboard = "Dashboard"
@@ -144,7 +145,7 @@ struct RootView: View {
                     insertion: .opacity.combined(with: .offset(y: 14)),
                     removal: .opacity))
             }
-            .animation(.easeOut(duration: 0.28), value: nav.section)
+            .animation(reduceMotion ? nil : Theme.Motion.gentle, value: nav.section)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Opaque on purpose. A translucent content pane forces AppKit to
             // recomposite the behind-window blur on every scroll frame, which
@@ -154,11 +155,22 @@ struct RootView: View {
     }
 
     private func sidebarRow(_ section: Section) -> some View {
-        Label {
+        let selected = nav.section == section
+        return Label {
             Text(section.rawValue).font(.system(size: 13))
         } icon: {
+            // Tinted icon tile; the selected one warms up and gets a soft
+            // accent halo. Kept small and matte so the sidebar stays quiet.
             Image(systemName: section.systemImage)
-                .font(.system(size: 13))
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(selected ? Theme.accent : Color.primary.opacity(0.72))
+                .frame(width: 21, height: 21)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Theme.accent.opacity(selected ? 0.16 : 0))
+                )
+                .shadow(color: Theme.accent.opacity(selected ? 0.35 : 0), radius: 4)
+                .animation(reduceMotion ? nil : Theme.Motion.snappy, value: selected)
         }
         .frame(height: 26)
         .tag(section)

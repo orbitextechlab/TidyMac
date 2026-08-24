@@ -5,9 +5,11 @@ import SwiftUI
 /// of the user's choosing. Changes apply as soon as you let go; there is no
 /// separate Apply step.
 struct FanView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var state: AppState
 
     @State private var helperUsable = HelperInstaller.isUsable
+    @State private var rivalController: String?
     @State private var helperOutdated = HelperInstaller.isOutdated
     @State private var isInstallingHelper = false
     @State private var showSavePreset = false
@@ -19,18 +21,30 @@ struct FanView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                if !helperUsable { helperBanner }
+                if engine.firmwareRejectsWrites {
+                    firmwareBanner
+                } else {
+                    if let rival = rivalController { rivalBanner(rival) }
+                    if !helperUsable { helperBanner }
+                }
                 if state.fans.isEmpty {
                     ContentUnavailableView("No fans detected",
                         systemImage: "fan.slash",
                         description: Text("This Mac has no controllable fans, or the SMC is unavailable."))
                         .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
-                    presetBar
-                    ForEach(Array(state.fans.enumerated()), id: \.element.id) { index, fan in
-                        fanCard(fan).staggeredEntrance(index + 1)
+                    // With the firmware verdict in, live-looking controls
+                    // would be theater — dim and disable them; the banner
+                    // explains why and offers a re-test.
+                    Group {
+                        presetBar
+                        ForEach(Array(state.fans.enumerated()), id: \.element.id) { index, fan in
+                            fanCard(fan).staggeredEntrance(index + 1)
+                        }
+                        statusLine
                     }
-                    statusLine
+                    .disabled(engine.firmwareRejectsWrites)
+                    .opacity(engine.firmwareRejectsWrites ? 0.45 : 1)
                 }
             }
             .padding(28)
@@ -44,6 +58,7 @@ struct FanView: View {
             state.retainFullSensors()
             helperUsable = HelperInstaller.isUsable
             helperOutdated = HelperInstaller.isOutdated
+            rivalController = FanRivalDetector.runningRival()
         }
         .onDisappear { state.releaseFullSensors() }
         .alert("Save current setup as a preset", isPresented: $showSavePreset) {
@@ -78,6 +93,52 @@ struct FanView: View {
 
     private var overrideCount: Int {
         state.fans.filter { engine.settings(for: $0.id).mode != .auto }.count
+    }
+
+    /// This OS accepted our fan writes and silently kept its own values, with
+    /// no rival software running — fan control is simply not permitted here.
+    /// Own the limitation instead of showing controls that do nothing.
+    private var firmwareBanner: some View {
+        GlassCard(padding: 13) {
+            HStack(spacing: 11) {
+                Image(systemName: "fan.slash")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.warning)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("macOS is not accepting fan-speed commands on this Mac")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Text("The firmware acknowledged TidyMac's commands but kept control of the fans — this macOS version appears to block fan control entirely. No app can override it, including other fan tools. Monitoring and sensors still work; every fan has been returned to automatic.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Test Again") { engine.retryFirmwareControl() }
+                    .help("Probe the firmware again — useful after removing another fan tool or updating macOS.")
+            }
+        }
+    }
+
+    /// Another fan tool's daemon is running: every write TidyMac makes gets
+    /// overwritten within milliseconds, so its own controls are theater until
+    /// the rival goes away. Say so plainly instead of failing mysteriously.
+    private func rivalBanner(_ name: String) -> some View {
+        GlassCard(padding: 13) {
+            HStack(spacing: 11) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.warning)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(name) is controlling this Mac's fans")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Text("Its background helper keeps overriding TidyMac's fan commands — even when the app is closed. Quit or uninstall \(name) (including its helper) to control fans from here.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+        }
     }
 
     private var helperBanner: some View {
@@ -141,7 +202,7 @@ struct FanView: View {
     private func presetChip(_ preset: FanPreset) -> some View {
         let active = engine.activePresetName == preset.name
         return Button {
-            withAnimation(.spring(duration: 0.4)) {
+            withAnimation(reduceMotion ? nil : Theme.Motion.snappy) {
                 engine.apply(preset: preset,
                              fans: state.fans,
                              temperatures: state.allTemperatures,
@@ -285,11 +346,23 @@ struct FanView: View {
                 if let target = engine.targetRPM(for: fan, settings: settings,
                                                  temperatures: state.allTemperatures,
                                                  cpuTemperature: state.cpuTemperature) {
-                    Text("target \(Int(target)) RPM")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.accent)
-                        .contentTransition(.numericText())
+                    // Without a usable helper the engine computes this target
+                    // but never writes it — showing a confident orange number
+                    // while nothing happens is a lie. Say "paused" instead.
+                    if helperUsable {
+                        Text("target \(Int(target)) RPM")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.accent)
+                            .contentTransition(.numericText())
+                    } else {
+                        Label("target \(Int(target)) RPM — paused, update the helper",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.warning)
+                            .help("The installed helper is from an older build, so background fan control is paused. Update it from the banner above or Settings → Fan Helper.")
+                    }
                 }
             }
 

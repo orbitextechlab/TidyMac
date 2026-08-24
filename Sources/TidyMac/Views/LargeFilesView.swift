@@ -5,6 +5,7 @@ import AppKit
 /// over a size threshold (optionally untouched for months), review them with
 /// full paths, and move the chosen ones to the Trash.
 struct LargeFilesView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let service = LargeFilesService()
 
     private static let sizeOptions: [(label: String, bytes: Int64)] = [
@@ -235,7 +236,7 @@ struct LargeFilesView: View {
                 isTrashing = false
                 let removedIDs = Set(snapshot.filter(\.isSelected).map(\.id))
                     .subtracting(result.failed)
-                withAnimation { files.removeAll { removedIDs.contains($0.id) } }
+                withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { files.removeAll { removedIDs.contains($0.id) } }
                 failedPaths = result.failed
                 resultMessage = "Moved \(result.count) files (\(Format.bytes(result.bytes))) to the Trash"
             }

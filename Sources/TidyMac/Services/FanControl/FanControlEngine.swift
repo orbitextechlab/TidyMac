@@ -19,11 +19,23 @@ final class FanControlEngine: ObservableObject {
     @Published private(set) var settings: [Int: FanSettings] = [:]
     @Published var lastAction: String?
     @Published var lastError: String?
+    /// Set once this machine's firmware has repeatedly accepted-and-ignored
+    /// our writes with no rival fan software running: the OS simply does not
+    /// allow fan control. Sticks for the session; retrying is pointless.
+    @Published private(set) var firmwareRejectsWrites = false
     /// Name of the preset currently applied, if the settings still match it.
     @Published var activePresetName: String?
 
     private let controller: FanController
     private var lastAppliedRPM: [Int: Double] = [:]
+    /// When each fan's target was last sent — SMC writes apply asynchronously
+    /// and the resident helper re-asserts, so observed verification only
+    /// counts after a grace period.
+    private var lastAppliedAt: [Int: Date] = [:]
+    /// Consecutive helper write-verify failures. The helper reads every write
+    /// back, so a bounced write is detected reliably; three in a row with no
+    /// rival running means the firmware itself is refusing.
+    private var verifyFailures = 0
     private let rpmDeadband: Double = 100
     private static let defaultsKey = "fanSettingsByIndex"
 
@@ -33,6 +45,14 @@ final class FanControlEngine: ObservableObject {
            let saved = try? JSONDecoder().decode([Int: FanSettings].self, from: data) {
             settings = saved
         }
+    }
+
+    /// Forget the firmware verdict and probe again — for when the user has
+    /// removed a rival fan tool or updated macOS and wants to re-test.
+    func retryFirmwareControl() {
+        firmwareRejectsWrites = false
+        verifyFailures = 0
+        lastError = nil
     }
 
     /// True when at least one fan is under our control rather than the firmware's.
@@ -116,6 +136,8 @@ final class FanControlEngine: ObservableObject {
     func evaluate(temperatures: [SensorService.Temperature],
                   cpuTemperature: Double?,
                   fans: [SensorService.Fan]) {
+        // A firmware that ignores writes will ignore the next one too.
+        guard !firmwareRejectsWrites else { return }
         // Background re-assertion only makes sense with the prompt-free helper.
         guard canRunUnattended else {
             warnIfFansAreStuck(fans)
@@ -136,8 +158,45 @@ final class FanControlEngine: ObservableObject {
                 lastError = "Fan \(fan.id + 1): lost its sensor reading, returned to auto"
                 continue
             }
-            if let last = lastAppliedRPM[fan.id], abs(last - rpm) < rpmDeadband { continue }
+            if let last = lastAppliedRPM[fan.id], abs(last - rpm) < rpmDeadband {
+                verifyByObservation(fan: fan, want: last)
+                continue
+            }
             apply(rpm: rpm, to: fan)
+        }
+    }
+
+    /// The SMC's own reported target is ground truth. If, well past the async
+    /// grace period, it still refuses to hold what we asked for, either a
+    /// rival fan tool keeps overwriting it or the firmware refuses outside
+    /// control — the same verdict logic as a failed helper verify.
+    private func verifyByObservation(fan: SensorService.Fan, want: Double) {
+        guard let at = lastAppliedAt[fan.id],
+              Date().timeIntervalSince(at) > 5 else { return }
+        if abs(fan.targetRPM - want) > 150 {
+            lastAppliedAt[fan.id] = Date() // space the strikes out
+            noteBouncedWrite()
+        } else {
+            verifyFailures = 0
+            if firmwareRejectsWrites == false { lastError = nil }
+        }
+    }
+
+    /// Shared verdict path for a write the SMC did not keep.
+    private func noteBouncedWrite() {
+        if let rival = FanRivalDetector.runningRival() {
+            lastError = "\(rival) is overriding TidyMac's fan commands — quit it to control fans from here"
+            return
+        }
+        verifyFailures += 1
+        if verifyFailures >= 3 {
+            firmwareRejectsWrites = true
+            for id in settings.keys { settings[id] = FanSettings() }
+            persist()
+            lastAppliedRPM = [:]
+            lastAppliedAt = [:]
+            try? controller.resetAllDirect()
+            lastError = nil
         }
     }
 
@@ -194,6 +253,7 @@ final class FanControlEngine: ObservableObject {
             if canRunUnattended { try controller.setManualDirect(fanIndex: fan.id, rpm: rpm) }
             else { try controller.setManual(fanIndex: fan.id, rpm: rpm) }
             lastAppliedRPM[fan.id] = rpm
+            lastAppliedAt[fan.id] = Date()
             lastAction = "Fan \(fan.id + 1) → \(Int(rpm)) RPM"
             lastError = nil
         } catch {
@@ -215,6 +275,14 @@ final class FanControlEngine: ObservableObject {
     private func reportFailure(_ error: Error) {
         // Cancelling the authentication prompt is a normal action, not a fault.
         guard !"\(error)".contains("-128") else { return }
+
+        // The helper's write-verify failed: the SMC took the write and kept
+        // its own value. Either another fan tool is overwriting us within
+        // milliseconds, or the firmware refuses outside control entirely.
+        if "\(error)".contains("but the SMC reports") {
+            noteBouncedWrite()
+            if firmwareRejectsWrites { return }
+        }
         lastError = "Couldn't change the fan speed — try reinstalling the helper"
     }
 

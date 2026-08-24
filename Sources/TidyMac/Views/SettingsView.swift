@@ -2,6 +2,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
+    @AppStorage(AppearanceMode.storageKey) private var appearanceRaw = AppearanceMode.system.rawValue
+    @AppStorage(Haptics.soundEffectsKey) private var playSounds = true
+
+    private var soundEffects: Binding<Bool> { $playSounds }
 
     var body: some View {
         TabView {
@@ -16,6 +20,16 @@ struct SettingsView: View {
 
     private var general: some View {
         Form {
+            Picker("Appearance", selection: $appearanceRaw) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.label).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: appearanceRaw) { _, raw in
+                (AppearanceMode(rawValue: raw) ?? .system).apply()
+            }
+
             Slider(value: $state.refreshInterval, in: 1...10, step: 1) {
                 Text("Refresh interval")
             } minimumValueLabel: { Text("1s") } maximumValueLabel: { Text("10s") }
@@ -27,6 +41,8 @@ struct SettingsView: View {
                 Text("Celsius (°C)").tag(false)
                 Text("Fahrenheit (°F)").tag(true)
             }
+
+            Toggle("Play a sound when a scan or cleanup finishes", isOn: soundEffects)
 
             Toggle("Show CPU temperature in menu bar", isOn: $state.showMenuBarTemperature)
             Toggle("Show fan speed in menu bar", isOn: $state.showMenuBarFanSpeed)

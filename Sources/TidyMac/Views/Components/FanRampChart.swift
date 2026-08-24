@@ -4,6 +4,7 @@ import SwiftUI
 /// `minTemp`, rising to full speed at `maxTemp`, flat above it. Both corner
 /// points are draggable, and the live temperature rides along the line.
 struct FanRampChart: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var minTemp: Double
     @Binding var maxTemp: Double
     let currentTemp: Double?
@@ -120,7 +121,7 @@ struct FanRampChart: View {
             .frame(width: active ? 16 : 13, height: active ? 16 : 13)
             .shadow(color: Theme.accent.opacity(active ? 0.6 : 0.3), radius: active ? 7 : 3)
             .position(point)
-            .animation(.spring(duration: 0.25), value: active)
+            .animation(reduceMotion ? nil : Theme.Motion.snappy, value: active)
     }
 
     /// Where the machine is right now: dashed rule, dot on the ramp, reading.
@@ -148,7 +149,7 @@ struct FanRampChart: View {
                 .background(Capsule().fill(Theme.card))
                 .position(x: min(w - 22, max(22, px)), y: max(10, py - 16))
         }
-        .animation(.easeInOut(duration: 0.4), value: temp)
+        .animation(reduceMotion ? nil : Theme.Motion.gentle, value: temp)
     }
 
     private func axisLabels(w: CGFloat, h: CGFloat) -> some View {

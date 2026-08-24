@@ -8,6 +8,7 @@ import SwiftUI
 /// items that cannot be trashed are listed in a second, explicit confirmation
 /// before any permanent privileged delete.
 struct CleanerView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var title = "System Junk"
     var subtitle = "Reclaim space from caches, logs and app leftovers"
     var categories: [CleaningEngine.Category] = CleaningEngine.systemJunkCategories
@@ -71,7 +72,7 @@ struct CleanerView: View {
         }
         if let cached = nav.takeSmartScanItems(for: categories) {
             nav.autoScanOnArrival = false
-            withAnimation(.spring(duration: 0.5)) { items = cached }
+            withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { items = cached }
         } else if nav.autoScanOnArrival {
             nav.autoScanOnArrival = false
             scan()
@@ -278,7 +279,7 @@ struct CleanerView: View {
                         guard let item = selected.first(where: { $0.id == id }) else { return false }
                         return !skippedSet.contains(item.url.path)
                     }
-                withAnimation { items.removeAll { handledIDs.contains($0.id) } }
+                withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { items.removeAll { handledIDs.contains($0.id) } }
 
                 var parts: [String] = []
                 if result.trashedCount > 0 {
@@ -308,7 +309,7 @@ struct CleanerView: View {
             await MainActor.run {
                 isCleaning = false
                 let deletedIDs = Set(outcome.deleted.map(\.id))
-                withAnimation { items.removeAll { deletedIDs.contains($0.id) } }
+                withAnimation(reduceMotion ? nil : Theme.Motion.gentle) { items.removeAll { deletedIDs.contains($0.id) } }
                 let bytes = outcome.deleted.reduce(Int64(0)) { $0 + $1.sizeBytes }
                 var suffix = " · Permanently deleted \(outcome.deleted.count) items (\(Format.bytes(bytes)))"
                 if !outcome.failed.isEmpty {

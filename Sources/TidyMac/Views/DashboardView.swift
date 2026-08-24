@@ -4,6 +4,7 @@ import SwiftUI
 /// meters last. The app should answer "is my Mac OK?" before showing numbers.
 struct DashboardView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -59,8 +60,12 @@ struct DashboardView: View {
                 .scaleEffect(heroPulse ? 1.07 : 1.0)
                 .opacity(heroPulse ? 1.0 : 0.75)
                 .onAppear {
-                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                    // Decorative breathing — under Reduce Motion the dot just
+                    // sits at full presence instead of pulsing.
+                    if reduceMotion {
                         heroPulse = true
+                    } else {
+                        withAnimation(Theme.Motion.pulse) { heroPulse = true }
                     }
                 }
             VStack(alignment: .leading, spacing: 1) {

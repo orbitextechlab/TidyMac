@@ -4,6 +4,7 @@ import SwiftUI
 /// independently: Run → spinner while working → check (or warning) with the
 /// outcome inline. "Run All" walks the safe tasks top to bottom.
 struct MaintenanceView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var runningID: String?
     @State private var isRunningAll = false
     @State private var results: [String: (message: String, isError: Bool)] = [:]
@@ -165,7 +166,7 @@ struct MaintenanceView: View {
     }
 
     private func execute(_ task: MaintenanceService.Task, completion: (() -> Void)? = nil) {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(reduceMotion ? nil : Theme.Motion.gentle) {
             runningID = task.id
             results[task.id] = nil
         }
@@ -180,10 +181,13 @@ struct MaintenanceView: View {
                     : ("Failed — see Console for details", true)
             }
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(reduceMotion ? nil : Theme.Motion.gentle) {
                     results[task.id] = outcome
                     runningID = nil
                 }
+                // Physical beat only for a real completion, not for a
+                // cancelled auth prompt or a failure.
+                if !outcome.1, outcome.0 != "Cancelled" { Haptics.success() }
                 completion?()
             }
         }

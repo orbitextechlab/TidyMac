@@ -80,6 +80,41 @@ enum Theme {
     }
 }
 
+// MARK: - Motion vocabulary
+
+extension Theme {
+    /// The app's entire animation vocabulary. Every animated view picks one of
+    /// these tokens instead of inventing a curve inline, so all surfaces move
+    /// with the same feel and a tuning pass happens in exactly one place.
+    /// (Three-token idea adapted from PureMac, MIT — see NOTICE.)
+    ///
+    /// Reduce Motion: callsites gate decorative motion (`reduceMotion ? nil :
+    /// Theme.Motion.x`). Small progress indicators — spinner, progress sweep —
+    /// deliberately keep animating, the way NSProgressIndicator does: they are
+    /// the only signal that work is happening.
+    enum Motion {
+        /// Hover, selection, and live value ticks. Fast with a little life.
+        static let snappy = Animation.spring(response: 0.30, dampingFraction: 0.72)
+        /// Entrances, phase changes, section swaps, list mutations. Calm settle.
+        static let gentle = Animation.spring(response: 0.48, dampingFraction: 0.86)
+        /// Button press acknowledgment. Quick, no bounce.
+        static let press = Animation.easeOut(duration: 0.12)
+
+        // Ambient loops. Each keeps its tuned duration; what they share is the
+        // rule that decorative ones stop under Reduce Motion.
+        /// Breathing emphasis (status dot). Decorative — gate under RM.
+        static let pulse = Animation.easeInOut(duration: 1.6).repeatForever(autoreverses: true)
+        /// The scan orb's ring rotation. Decorative — gate under RM.
+        static let orbit = Animation.linear(duration: 2.4).repeatForever(autoreverses: false)
+        /// Small activity spinner. Progress signal — keep under RM.
+        static let spinner = Animation.linear(duration: 0.8).repeatForever(autoreverses: false)
+        /// Loading-skeleton shimmer. Decorative — gate under RM (skeleton stays).
+        static let shimmer = Animation.linear(duration: 1.4).repeatForever(autoreverses: false)
+        /// Indeterminate progress bar sweep. Progress signal — keep under RM.
+        static let progressSweep = Animation.easeInOut(duration: 1.2).repeatForever(autoreverses: false)
+    }
+}
+
 // MARK: - Typography scale
 
 extension Font {

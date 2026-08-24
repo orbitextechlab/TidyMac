@@ -19,6 +19,10 @@ struct TidyMacApp: App {
     @StateObject private var nav = Navigation()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        AppearanceMode.applyStored()
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()

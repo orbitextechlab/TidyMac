@@ -119,7 +119,11 @@ Alongside Smart Scan there are focused tools:
 
 - **Fans** — read current RPM and drive fans manually or from a temperature
   ramp. Every target RPM is clamped to the range the fan itself reports, so
-  TidyMac cannot ask the hardware for a speed it does not support.
+  TidyMac cannot ask the hardware for a speed it does not support. Every write
+  is read back and verified; if another fan tool keeps overriding the commands
+  TidyMac names it, and if the firmware itself refuses outside control — some
+  macOS versions block fan writes entirely — TidyMac says so and returns the
+  fans to automatic instead of showing controls that do nothing.
 - **Sensors** — temperatures and power readings straight from the SMC
 
 ### Protection
