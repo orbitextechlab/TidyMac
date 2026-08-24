@@ -111,6 +111,10 @@ guard arguments.count >= 2 else {
       smc-helper get
       smc-helper set <fanId> <mode> [<rpm>]   (mode: 0 = auto, 1 = manual)
       smc-helper reset
+      smc-helper serve                        resident mode: hold the SMC
+                                              connection, read commands on
+                                              stdin (set/auto/reset/ping/quit)
+      smc-helper hold <fanId> <rpm> <secs>    diagnostic: hold and sample
     """)
     exit(0)
 }

@@ -248,6 +248,14 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/orbitextechlab/TidyMac/main/install.sh | bash
           \`\`\`
 
+          ## Upgrading, if you use fan control
+
+          Fan control needs a small privileged helper, and TidyMac only trusts a
+          helper that matches the app byte for byte — it runs as root, so a
+          loose version check would mean trusting an older binary. After
+          updating, open **Fans** and click **Update…** once. Until you do,
+          background fan control stays paused and the fan cards say so.
+
           ## Verifying the download
 
           \`\`\`bash
