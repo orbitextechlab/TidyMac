@@ -15,6 +15,12 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: "YES"
     CODE_SIGNING_ALLOWED: "YES"
+  configs:
+    Release:
+      # Xcode injects com.apple.security.get-task-allow so a debugger can
+      # attach. Notarization rejects any binary that requests it, so Release
+      # builds must opt out; Debug keeps it, or debugging in Xcode breaks.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: "NO"
 
 targets:
   TidyMac:

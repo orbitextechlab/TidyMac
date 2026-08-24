@@ -37,7 +37,7 @@ jobs:
         run: |
           missing=""
           for s in APPLE_TEAM_ID MACOS_CERT_P12 MACOS_CERT_PASSWORD \
-                   APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+                   APPLE_ID APPLE_APP_PASSWORD; do
             eval "v=\${$s}"
             [ -n "$v" ] || missing="$missing $s"
           done
@@ -50,9 +50,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
 
       # A throwaway keychain keeps the signing key out of the runner's login
       # keychain and dies with the job.
@@ -82,18 +81,15 @@ jobs:
 
       - name: Store the notarization credentials
         env:
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           set -euo pipefail
-          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/key.p8"
           xcrun notarytool store-credentials TidyMacNotary \
-            --key "$RUNNER_TEMP/key.p8" \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER_ID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$TEAM_ID" \
             --keychain "$RUNNER_TEMP/build.keychain"
-          rm -f "$RUNNER_TEMP/key.p8"
 
       - name: Install tools
         run: brew install xcodegen create-dmg

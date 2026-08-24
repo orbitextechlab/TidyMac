@@ -39,8 +39,8 @@ TIDYMAC_VERSION=v0.1.0 TIDYMAC_PREFIX=~/Applications \
 ### Disk image
 
 **[Download the latest release](https://github.com/orbitextechlab/TidyMac/releases/latest)**,
-open the `.dmg`, and drag TidyMac into your Applications folder. Then clear the
-quarantine flag as described below.
+open the `.dmg`, and drag TidyMac into your Applications folder. It opens on a
+double-click — no right-click trick, no `xattr` incantation.
 
 With `gh`:
 
@@ -49,7 +49,6 @@ gh release download --repo orbitextechlab/TidyMac --pattern '*.dmg'
 hdiutil attach TidyMac-*.dmg
 cp -R /Volumes/TidyMac/TidyMac.app /Applications/
 hdiutil detach /Volumes/TidyMac
-xattr -dr com.apple.quarantine /Applications/TidyMac.app
 ```
 
 Every release also ships a `.zip` of the app bundle, which is easier to unpack in
@@ -57,21 +56,22 @@ a script than mounting a disk image, plus a `SHA256SUMS.txt` you can check with
 `shasum -a 256 -c SHA256SUMS.txt`. Builds are universal — Apple Silicon and
 Intel.
 
-### macOS will refuse to open it at first
+### Checking it really is what it claims to be
 
-Releases are **ad-hoc signed and not notarized** — notarization requires a paid
-Apple Developer ID, which this project does not have. macOS therefore quarantines
-the download and reports the app as damaged or from an unidentified developer.
-Clearing the quarantine flag is what fixes it:
+Releases from v0.2.0 on are signed with a Developer ID and notarized by Apple,
+and the ticket is stapled into both the app and the disk image, so verification
+works offline:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/TidyMac.app
+spctl --assess --type execute -vv /Applications/TidyMac.app
 ```
 
-That command is not a workaround for a broken app; it tells macOS you accept that
-the binary is not signed by a registered developer. If you would rather not take
-that on trust, [build it from source](#building) — the result is identical and
-never gets quarantined.
+That should print `accepted` and `source=Notarized Developer ID`. Anything else
+means the copy you have is not the one published here.
+
+Releases before v0.2.0 were ad-hoc signed and are not notarized; macOS
+quarantines them and reports the app as damaged until the flag is cleared with
+`xattr -dr com.apple.quarantine`. Prefer a current release.
 
 ## What it does
 

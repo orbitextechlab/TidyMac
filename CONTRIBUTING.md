@@ -55,6 +55,34 @@ fans and sensors, and those paths are largely untested. If you have an Intel Mac
 and the Fans or Sensors sections misbehave, an issue with your model identifier
 (`sysctl hw.model`) and what you saw is genuinely useful.
 
+## Cutting a release
+
+Releases are built, signed and notarized by the `Release` workflow when a
+`vX.Y.Z` tag is pushed. The tag is the source of truth for the version — the
+build injects it into `MARKETING_VERSION`, and the job fails if the bundle
+disagrees.
+
+That job needs five repository secrets, all belonging to the same Apple team as
+the signing certificate:
+
+| Secret | What it is |
+|---|---|
+| `APPLE_TEAM_ID` | Developer team ID |
+| `MACOS_CERT_P12` | base64 of the exported Developer ID Application identity |
+| `MACOS_CERT_PASSWORD` | password set when exporting that `.p12` |
+| `APPLE_ID` | Apple ID that owns the team |
+| `APPLE_APP_PASSWORD` | app-specific password from appleid.apple.com |
+
+Two constraints in the build exist purely because notarization enforces them,
+and quietly break it if changed:
+
+- `CODE_SIGN_INJECT_BASE_ENTITLEMENTS` is `NO` for Release. Xcode otherwise adds
+  `com.apple.security.get-task-allow`, and Apple rejects any binary requesting
+  it. Debug keeps the injection so debugging still works.
+- The step that embeds `smc-helper` re-signs it with the build's own identity.
+  Signing it ad-hoc there would leave a correctly signed app wrapped around an
+  unsigned binary, which notarization also rejects.
+
 ## Reporting bugs
 
 Include your macOS version, Mac model, and what you expected versus what
