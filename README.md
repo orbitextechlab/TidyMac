@@ -91,6 +91,7 @@ it first.
 | Crash Reports | Diagnostic reports left by crashed apps |
 | Xcode Junk | DerivedData, device support, simulator caches |
 | Developer Caches | npm / gradle / CocoaPods — re-downloaded on demand |
+| Package Caches | pnpm store, pip, Homebrew, Maven, Gradle daemon, bun, uv, conda, NuGet — refetched by each tool |
 | Mail Downloads | Local copies of attachments still on the mail server |
 | Xcode Archives | Archives with dSYMs — needed to symbolicate shipped builds |
 | iOS Backups | Device backups |

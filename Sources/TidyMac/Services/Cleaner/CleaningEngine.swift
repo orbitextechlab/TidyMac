@@ -18,6 +18,7 @@ final class CleaningEngine {
         case crashReports = "Crash Reports"
         case xcodeJunk = "Xcode Junk"
         case devCaches = "Developer Caches"
+        case packageCaches = "Package Caches"
         case mailDownloads = "Mail Downloads"
         case xcodeArchives = "Xcode Archives"
         case iosBackups = "iOS Backups"
@@ -32,6 +33,7 @@ final class CleaningEngine {
             case .crashReports: return "exclamationmark.triangle"
             case .xcodeJunk: return "hammer"
             case .devCaches: return "terminal"
+            case .packageCaches: return "shippingbox.fill"
             case .mailDownloads: return "envelope.open"
             case .xcodeArchives: return "archivebox"
             case .iosBackups: return "iphone"
@@ -44,7 +46,7 @@ final class CleaningEngine {
         /// anything that may hold user data ships unchecked.
         var isPreselected: Bool {
             switch self {
-            case .userCaches, .appLogs, .crashReports, .xcodeJunk, .devCaches:
+            case .userCaches, .appLogs, .crashReports, .xcodeJunk, .devCaches, .packageCaches:
                 return true
             case .mailDownloads, .xcodeArchives, .iosBackups, .downloads, .trash:
                 return false
@@ -60,6 +62,7 @@ final class CleaningEngine {
             case .xcodeArchives: return "App archives with dSYMs, needed to symbolicate shipped builds"
             case .mailDownloads: return "Local copies of mail attachments (usually still on the mail server)"
             case .devCaches: return "npm / gradle / cocoapods caches — re-downloaded on demand"
+            case .packageCaches: return "Downloaded packages — every tool re-fetches them, but a large store means a slow first build afterwards"
             default: return nil
             }
         }
@@ -80,7 +83,7 @@ final class CleaningEngine {
         .userCaches, .appLogs, .crashReports, .mailDownloads, .iosBackups, .downloads, .trash,
     ]
     static let developerJunkCategories: [Category] = [
-        .xcodeJunk, .devCaches, .xcodeArchives,
+        .xcodeJunk, .devCaches, .packageCaches, .xcodeArchives,
     ]
 
     // MARK: - Scanning
@@ -117,6 +120,23 @@ final class CleaningEngine {
                                           home.appendingPathComponent(".cache"),
                                           home.appendingPathComponent(".gradle/caches"),
                                           home.appendingPathComponent(".cocoapods")]
+        // Package-manager download stores. Every one of these is refetched on
+        // demand by its own tool, which is what makes the category safe to
+        // pre-select. Absent tools cost nothing: the filter below drops paths
+        // that do not exist.
+        case .packageCaches:
+            candidates = [
+                lib("pnpm/store"),              // pnpm content-addressable store
+                lib("Caches/pip"),              // pip wheel cache
+                lib("Caches/Homebrew"),         // brew downloads; `brew cleanup` does the same
+                home.appendingPathComponent(".gradle/daemon"),   // daemon logs, not build output
+                home.appendingPathComponent(".bun/install/cache"),
+                home.appendingPathComponent(".cache/uv"),
+                home.appendingPathComponent(".conda/pkgs"),
+                home.appendingPathComponent(".m2/repository"),   // Maven
+                home.appendingPathComponent(".ivy2/cache"),      // Ivy / sbt
+                home.appendingPathComponent(".nuget/packages"),
+            ]
         case .mailDownloads: candidates = [lib("Containers/com.apple.mail/Data/Library/Mail Downloads")]
         case .xcodeArchives: candidates = [lib("Developer/Xcode/Archives")]
         case .iosBackups:   candidates = [lib("Application Support/MobileSync/Backup")]

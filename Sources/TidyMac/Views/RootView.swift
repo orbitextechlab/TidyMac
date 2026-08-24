@@ -125,7 +125,7 @@ struct RootView: View {
                     CleanerView(nav: nav)
                 case .xcodeJunk:
                     CleanerView(title: "Xcode Junk",
-                                subtitle: "DerivedData, device support, simulators, archives and tool caches",
+                                subtitle: "DerivedData, device support, simulators, archives, and package-manager caches",
                                 categories: CleaningEngine.developerJunkCategories,
                                 nav: nav)
                 case .largeFiles: LargeFilesView()
