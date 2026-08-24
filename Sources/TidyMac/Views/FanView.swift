@@ -141,6 +141,35 @@ struct FanView: View {
         }
     }
 
+    /// Display name for a sensor key, for the picker's closed state.
+    private func sensorLabel(for key: String) -> String {
+        guard !key.isEmpty else { return "Hottest CPU sensor" }
+        return state.sensorCatalog.first { $0.key == key }?.label ?? key
+    }
+
+    /// One row of the sensor menu: name, its reading right now, and a
+    /// checkmark on the active choice. Built only while the menu is open.
+    @ViewBuilder
+    private func sensorChoice(label: String, key: String,
+                              settings: FanSettings,
+                              fan: SensorService.Fan) -> some View {
+        let reading = engine.temperature(forKey: key,
+                                         temperatures: state.allTemperatures,
+                                         cpuTemperature: state.cpuTemperature)
+        let title = reading.map { "\(label) — \(Format.temperature($0))" } ?? label
+        Button {
+            var updated = settings
+            updated.sensorKey = key
+            commit(updated, for: fan)
+        } label: {
+            if settings.sensorKey == key {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
     private var helperBanner: some View {
         GlassCard(padding: 13) {
             HStack(spacing: 11) {
@@ -316,24 +345,24 @@ struct FanView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("Follow").font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
-                Picker("", selection: Binding(
-                    get: { settings.sensorKey },
-                    set: { key in
-                        var updated = settings
-                        updated.sensorKey = key
-                        commit(updated, for: fan)
-                    }
-                )) {
-                    Text("Hottest CPU sensor").tag("")
+                // A Menu rather than a Picker: SwiftUI builds a Menu's items
+                // only when it opens, so each row can carry a live reading
+                // without the few hundred rebuilds per poll that putting
+                // temperatures in a Picker used to cost.
+                Menu {
+                    sensorChoice(label: "Hottest CPU sensor", key: "",
+                                 settings: settings, fan: fan)
                     Divider()
-                    // Names only, from the stable catalog. Putting live
-                    // readings in here rebuilt a few hundred menu items on
-                    // every poll; the current value is shown beside the picker.
                     ForEach(state.sensorCatalog, id: \.key) { sensor in
-                        Text(sensor.label).tag(sensor.key)
+                        sensorChoice(label: sensor.label, key: sensor.key,
+                                     settings: settings, fan: fan)
                     }
+                } label: {
+                    Text(sensorLabel(for: settings.sensorKey))
+                        .font(.system(size: 12))
                 }
-                .labelsHidden()
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 .frame(maxWidth: 280)
                 if let now = engine.temperature(forKey: settings.sensorKey,
                                                 temperatures: state.allTemperatures,
