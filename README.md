@@ -103,10 +103,20 @@ in the UI and are never selected by default.
 
 Alongside Smart Scan there are focused tools:
 
-- **Large Files** — walk any folder (your home directory by default) and rank what is taking up the most space
+- **Large Files** — ranks what is taking up the most space in Downloads, Documents
+  and Desktop. The folders are fixed on purpose: "is this big thing still wanted?"
+  is only a sensible question about files you put somewhere yourself. Applications
+  are never listed — removing one is the Uninstaller's job, which handles the
+  support files too
 - **Duplicates** — groups by size first, then confirms with a streaming SHA-256, so identical-size-but-different files are not reported as duplicates
 - **Space Lens** — treemap of where the space actually went
 - **Uninstaller** — removes an app *and* the support files it leaves behind
+
+**Schedule** (Settings → Schedule) repeats Smart Scan weekly or monthly. It scans
+and reports; unattended cleaning stays off until you tick categories one at a
+time, and only categories that always regenerate can be ticked at all. Schedules
+run while TidyMac is open — a window missed while the app was closed runs once
+the next time you open it, never several times over to catch up.
 
 ### Speed
 
@@ -131,6 +141,24 @@ Alongside Smart Scan there are focused tools:
 
 - **Permissions** — a readable view of what TidyMac needs and why, including
   Full Disk Access
+- **Every deletion passes one gate.** Each screen declares the folders it is
+  entitled to touch, and `DeletionGuard` refuses anything outside them. It also
+  refuses cloud sync state outright — iCloud Drive, Dropbox, OneDrive and the
+  File Provider databases are never junk, whatever a scanner thinks — resolves
+  symlinks and deletes through the resolved path, then re-resolves immediately
+  before removing, so a path swapped mid-operation aborts rather than being
+  followed somewhere else.
+
+Cleaning moves things to the Trash. Only the Trash category deletes for real,
+and a permanent, privileged delete is never silently escalated to: it is a
+separate step you confirm, re-checked against the same gate.
+
+### Menu bar
+
+Temperature, fan speed, the fan presets and the CPU/memory/disk meters without
+opening the window — plus purgeable space named rather than counted as free, the
+last scan and what it found, the next scheduled run, and a Scan Now that needs no
+main window.
 
 ## Requirements
 
@@ -188,23 +216,27 @@ Sources/
     App/          AppState, Navigation, app entry point
     Views/        One SwiftUI view per sidebar section + shared Components
     Services/
-      Cleaner/    CleaningEngine, duplicates, large files, Space Lens, uninstaller
+      Cleaner/    CleaningEngine, DeletionGuard, duplicates, large files, Space Lens, uninstaller
       FanControl/ Fan rules, presets, the control loop
       Monitoring/ Sensor and system metric polling
       Privileged/ AdminRunner, helper install, notifications
       Protection/ Permission checks
       SMC/        SMCKit — IOKit interface to the SMC
-      Speed/      Maintenance tasks, processes, startup items
+      Speed/      Maintenance tasks, scheduler, processes, startup items
   smc-helper/     Privileged CLI that performs SMC writes
 Design/AppIcon/   Icon source (SVG + generator script)
 ```
 
-Two deliberate choices worth knowing about:
+Three deliberate choices worth knowing about:
 
 - `Navigation` is a separate `ObservableObject` from `AppState`. `AppState`
   publishes metrics every couple of seconds; anything observing it rebuilds on
   every tick. The navigation shell observes only `Navigation`, so long scrolling
   lists do not hitch.
+- Scanners and `DeletionGuard` are independent on purpose. A scanner decides
+  what to *offer*; the guard decides what may actually be removed, and it does
+  not take the scanner's word for it. Adding a scanner means declaring which
+  `Scope` it is entitled to — not widening the guard.
 - The design language lives in `Views/Components/Theme.swift` — warm charcoal
   surfaces, one orange accent, depth from hairline borders and glows rather than
   shadows. Use those tokens instead of hard-coding colors.

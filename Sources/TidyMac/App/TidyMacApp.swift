@@ -30,6 +30,9 @@ struct TidyMacApp: App {
                 .environmentObject(nav)
                 .frame(minWidth: 860, minHeight: 580)
                 .onAppear {
+                    // Give the background scan somewhere to park its results
+                    // before anything can start one.
+                    state.navigation = nav
                     state.start()
                     AppDelegate.state = state
                     NotificationService.shared.requestAuthorizationIfNeeded()

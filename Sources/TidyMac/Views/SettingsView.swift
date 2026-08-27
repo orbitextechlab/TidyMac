@@ -11,11 +11,13 @@ struct SettingsView: View {
         TabView {
             general.tabItem { Label("General", systemImage: "gearshape") }
             alerts.tabItem { Label("Alerts", systemImage: "bell") }
+            ScheduleSettingsView()
+                .tabItem { Label("Schedule", systemImage: "calendar") }
             HelperSettingsView()
                 .tabItem { Label("Fan Helper", systemImage: "shield") }
             about.tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 460, height: 330)
+        .frame(width: 500, height: 400)
     }
 
     private var general: some View {

@@ -116,7 +116,9 @@ final class AppUninstaller {
         let targets = [app.url] + leftovers.filter { $0.isSelected }.map { $0.url }
         for url in targets {
             do {
-                try fileManager.trashItem(at: url, resultingItemURL: nil)
+                try DeletionGuard.perform(on: url, scope: .appUninstall) { approved in
+                    try fileManager.trashItem(at: approved, resultingItemURL: nil)
+                }
             } catch {
                 failed.append(url.path)
             }

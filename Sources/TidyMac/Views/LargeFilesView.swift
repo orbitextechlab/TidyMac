@@ -22,7 +22,6 @@ struct LargeFilesView: View {
         ("1+ year old", 365),
     ]
 
-    @State private var rootURL = FileManager.default.homeDirectoryForCurrentUser
     @State private var minSizeBytes: Int64 = 100 * 1_048_576
     @State private var olderThanDays: Int? = nil
 
@@ -71,7 +70,7 @@ struct LargeFilesView: View {
                 } else if let resultMessage {
                     Text(resultMessage).font(.caption).foregroundStyle(.green)
                 } else {
-                    Text("Find big and forgotten files in \(rootURL.path)")
+                    Text("Find big and forgotten files in \(Self.rootsLabel)")
                         .font(.caption).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
@@ -112,10 +111,6 @@ struct LargeFilesView: View {
             }
             .frame(maxWidth: 220)
 
-            Button {
-                chooseFolder()
-            } label: { Label("Choose Folder…", systemImage: "folder") }
-
             Spacer()
             if files.count == LargeFilesService.resultLimit {
                 Text("Showing top \(LargeFilesService.resultLimit) results")
@@ -135,7 +130,7 @@ struct LargeFilesView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     ScanBanner(title: "Sizing files over \(Format.bytes(minSizeBytes))…",
-                               status: progressText.isEmpty ? "Walking \(rootURL.lastPathComponent)…" : progressText,
+                               status: progressText.isEmpty ? "Walking \(Self.rootsLabel)…" : progressText,
                                found: matchedText.isEmpty ? nil : matchedText)
                     SkeletonList(rows: 6)
                 }
@@ -147,8 +142,8 @@ struct LargeFilesView: View {
                       systemImage: "doc.text.magnifyingglass")
             } description: {
                 Text(hasScanned
-                     ? "Nothing in \(rootURL.lastPathComponent) matches the current size and age filters."
-                     : "Scan \(rootURL.lastPathComponent) for files over \(Format.bytes(minSizeBytes)).")
+                     ? "Nothing in \(Self.rootsLabel) matches the current size and age filters."
+                     : "Scan \(Self.rootsLabel) for files over \(Format.bytes(minSizeBytes)).")
             } actions: {
                 if !hasScanned {
                     Button("Scan Now") { scan() }.buttonStyle(.borderedProminent)
@@ -189,16 +184,13 @@ struct LargeFilesView: View {
 
     // MARK: - Actions
 
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = rootURL
-        if panel.runModal() == .OK, let url = panel.url {
-            rootURL = url
-        }
-    }
+    /// "Downloads, Documents and Desktop" — the folders scanned, named in the
+    /// UI so the scope is never a mystery now that it cannot be changed.
+    private static let rootsLabel: String = {
+        let names = LargeFilesService.roots.map(\.lastPathComponent)
+        guard let last = names.last, names.count > 1 else { return names.first ?? "Downloads" }
+        return names.dropLast().joined(separator: ", ") + " and " + last
+    }()
 
     private func scan() {
         isScanning = true
@@ -209,10 +201,9 @@ struct LargeFilesView: View {
         let flag = CancelFlag()
         cancelFlag = flag
         let service = self.service
-        let root = rootURL
         let filters = LargeFilesService.Filters(minSizeBytes: minSizeBytes, olderThanDays: olderThanDays)
         Task.detached(priority: .userInitiated) {
-            let found = service.scan(root: root, filters: filters, progress: { count, bytes in
+            let found = service.scan(filters: filters, progress: { count, bytes in
                 Task { @MainActor in
                     progressText = "Scanned \(count) files"
                     matchedText = Format.bytes(bytes)

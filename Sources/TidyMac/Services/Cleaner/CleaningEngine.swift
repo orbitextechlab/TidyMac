@@ -12,7 +12,7 @@ import Foundation
 ///    privileged deletion happens.
 final class CleaningEngine {
 
-    enum Category: String, CaseIterable, Identifiable {
+    enum Category: String, CaseIterable, Identifiable, Codable {
         case userCaches = "User Caches"
         case appLogs = "Application Logs"
         case crashReports = "Crash Reports"
@@ -165,6 +165,11 @@ final class CleaningEngine {
             // Crash reports are listed separately; keep them out of "Logs".
             if category == .appLogs, child.lastPathComponent == "DiagnosticReports" { continue }
             if category == .downloads, !isOlderThan(child, days: 30) { continue }
+            // Cloud sync state is not junk and is never removable, so it has no
+            // business appearing in a pre-ticked list. `DeletionGuard` refuses
+            // it regardless; filtering here as well keeps it off screen instead
+            // of showing it ticked and then reporting it as skipped.
+            if DeletionGuard.isProviderOwned(child) { continue }
             // A symlink's target would be sized but only the link gets removed,
             // so reporting the target size would fake reclaimed space. Skip.
             if (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
@@ -227,15 +232,21 @@ final class CleaningEngine {
                 continue
             }
             do {
-                if item.category == .trash {
-                    try fileManager.removeItem(at: item.url)
-                    result.deletedBytes += item.sizeBytes
-                    result.deletedCount += 1
-                } else {
-                    try fileManager.trashItem(at: item.url, resultingItemURL: nil)
-                    result.trashedBytes += item.sizeBytes
-                    result.trashedCount += 1
+                try DeletionGuard.perform(on: item.url, scope: .systemJunk) { url in
+                    if item.category == .trash {
+                        try fileManager.removeItem(at: url)
+                        result.deletedBytes += item.sizeBytes
+                        result.deletedCount += 1
+                    } else {
+                        try fileManager.trashItem(at: url, resultingItemURL: nil)
+                        result.trashedBytes += item.sizeBytes
+                        result.trashedCount += 1
+                    }
                 }
+            } catch let refusal as DeletionGuard.Refusal {
+                // A refusal is the guard working, not a permission problem, so
+                // it must never become an offer to delete with admin rights.
+                result.skipped.append((item.url.path, refusal.description))
             } catch {
                 // Only real permission failures justify offering a privileged
                 // permanent delete; anything else must not escalate to rm -rf.
@@ -265,11 +276,14 @@ final class CleaningEngine {
     /// removing 4 of 5 items) is reported truthfully.
     func deletePermanently(_ items: [Item]) -> (deleted: [Item], failed: [Item]) {
         guard !items.isEmpty else { return ([], []) }
-        // Refuse paths containing a symlinked component — root rm -rf must
-        // never resolve through a user-swappable link. Items filtered out here
-        // simply show up as "failed" in the on-disk verification below.
+        // Re-validate every path against the same gate the user-level pass
+        // used. This is the branch that runs `rm -rf` as root, so it re-derives
+        // the answer rather than trusting that the earlier check happened.
+        // Anything filtered out here simply shows up as "failed" in the on-disk
+        // verification below.
         let safe = items.filter {
-            $0.url.resolvingSymlinksInPath().path == $0.url.path
+            guard $0.url.resolvingSymlinksInPath().path == $0.url.path else { return false }
+            return (try? DeletionGuard.authorize($0.url, scope: .systemJunk)) != nil
         }
         let paths = safe.map {
             "'" + $0.url.path.replacingOccurrences(of: "'", with: "'\\''") + "'"

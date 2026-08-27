@@ -108,9 +108,11 @@ final class DuplicatesService {
             if toRemove.count == group.files.count { toRemove.removeFirst() }
             for file in toRemove {
                 do {
-                    try fileManager.trashItem(at: file.url, resultingItemURL: nil)
-                    count += 1
-                    bytes += file.sizeBytes
+                    try DeletionGuard.perform(on: file.url, scope: .userFiles) { url in
+                        try fileManager.trashItem(at: url, resultingItemURL: nil)
+                        count += 1
+                        bytes += file.sizeBytes
+                    }
                 } catch {
                     failed.append(file.url.path)
                 }

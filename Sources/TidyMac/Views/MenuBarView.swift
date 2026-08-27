@@ -20,6 +20,7 @@ struct MenuBarView: View {
                 section("Fan Preset") { presetRow }
             }
             section("System") { systemMeters }
+            section("Cleanup") { CleanupRows(scheduler: state.scheduler) }
             Divider().opacity(0.6)
             footer
         }
@@ -99,6 +100,21 @@ struct MenuBarView: View {
                   value: Format.percent(state.memory.usedFraction))
             meter("Disk", fraction: state.disk.usedFraction,
                   value: Format.bytes(state.disk.totalBytes - state.disk.usedBytes))
+            // Free space above already counts purgeable, so name it rather
+            // than let the number look like space that is really there.
+            if state.disk.purgeableBytes > 1_000_000_000 {
+                HStack(spacing: 8) {
+                    // No fixed width here: this row has no meter to line up
+                    // with, and "Purgeable" does not fit the label column.
+                    Text("Purgeable")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer(minLength: 0)
+                    Text("\(Format.bytes(state.disk.purgeableBytes)) held by macOS")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
         }
     }
 
@@ -110,7 +126,7 @@ struct MenuBarView: View {
                 .frame(width: 48, alignment: .leading)
             Meter(fraction: fraction, color: Theme.usage(fraction), height: 5)
             NeuValueChip(text: value, font: .system(size: 10.5, weight: .semibold))
-                .frame(width: 68, alignment: .trailing)
+                .frame(width: 80, alignment: .trailing)
         }
     }
 
@@ -209,6 +225,88 @@ struct MenuBarView: View {
                 Capsule().fill(Theme.chipFill)
                     .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
             )
+    }
+}
+
+/// Last scan, next scheduled run, and a scan that needs no window.
+///
+/// Its own view so it can observe the scheduler directly — the rest of the
+/// dropdown redraws on AppState's polling tick, which would leave the next-run
+/// line a beat behind an edit made in Settings.
+private struct CleanupRows: View {
+    @EnvironmentObject private var state: AppState
+    @ObservedObject var scheduler: SchedulerService
+
+    private var lastScanDate: Date? {
+        state.lastScanAt > 0 ? Date(timeIntervalSince1970: state.lastScanAt) : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            row(icon: "clock.arrow.circlepath", title: "Last scan", value: lastScanValue)
+            if let next = scheduler.config.nextRunDate {
+                row(icon: "calendar", title: "Next run", value: Self.relative(next))
+            }
+            scanButton
+        }
+    }
+
+    private var lastScanValue: String {
+        guard let date = lastScanDate else { return "Never" }
+        let when = Self.relative(date)
+        guard state.lastScanBytes > 0 else { return when }
+        return "\(Format.bytes(Int64(state.lastScanBytes))) · \(when)"
+    }
+
+    private func row(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 14)
+            Text(title)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 6)
+            Text(value)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+        }
+    }
+
+    /// Runs a scan only. Cleaning from here would be a one-click removal with
+    /// no review, which the app does not do anywhere else either.
+    private var scanButton: some View {
+        Button {
+            state.runBackgroundScan()
+        } label: {
+            HStack(spacing: 5) {
+                if state.isBackgroundScanning {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                        .frame(width: 11, height: 11)
+                } else {
+                    Image(systemName: "sparkle.magnifyingglass").font(.system(size: 10))
+                }
+                Text(state.isBackgroundScanning ? "Scanning…" : "Scan Now")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(Theme.chipFill)
+                    .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(state.isBackgroundScanning)
+        .help("Scan for junk without opening the window")
+    }
+
+    private static func relative(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

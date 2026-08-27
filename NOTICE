@@ -25,5 +25,11 @@ Contributors, licensed under the MIT License:
 
 Adapted portions: the haptic feedback wrapper (Sources/TidyMac/Services/
 Haptics.swift), the three-token motion vocabulary concept (Theme.Motion in
-Sources/TidyMac/Views/Components/Theme.swift), and the one-shot confetti
-particle approach (Sources/TidyMac/Views/Components/ConfettiView.swift).
+Sources/TidyMac/Views/Components/Theme.swift), the one-shot confetti
+particle approach (Sources/TidyMac/Views/Components/ConfettiView.swift), and
+the scheduler hardening pattern of refusing a persisted next-run date that has
+already passed, rather than treating it as due (Sources/TidyMac/Services/
+Speed/SchedulerService.swift), and the two-layer deletion model — scanners
+propose, a single scope-checked gate disposes — together with the cloud File
+Provider denylist and the check-then-re-resolve guard against path substitution
+(Sources/TidyMac/Services/Cleaner/DeletionGuard.swift).

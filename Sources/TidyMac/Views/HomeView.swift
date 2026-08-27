@@ -26,7 +26,6 @@ struct HomeView: View {
     @State private var systemJunkBytes: Int64?
     @State private var xcodeJunkBytes: Int64?
     @State private var appCount: Int?
-    @AppStorage("lastSmartScanAt") private var lastScanAt: Double = 0
 
     var body: some View {
         ScrollView {
@@ -56,10 +55,10 @@ struct HomeView: View {
     }
 
     private var lastScanLabel: String {
-        guard lastScanAt > 0 else { return "Never" }
+        guard state.lastScanAt > 0 else { return "Never" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: Date(timeIntervalSince1970: lastScanAt),
+        return formatter.localizedString(for: Date(timeIntervalSince1970: state.lastScanAt),
                                          relativeTo: Date())
     }
 
@@ -411,7 +410,8 @@ struct HomeView: View {
                 }
                 systemJunkBytes = system
                 xcodeJunkBytes = dev
-                lastScanAt = Date().timeIntervalSince1970
+                state.lastScanAt = Date().timeIntervalSince1970
+                state.lastScanBytes = Int(system + dev)
                 // Hand the full results to the cleaner screens so navigating
                 // there shows them instantly instead of rescanning.
                 nav.smartScanItems = items

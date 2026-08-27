@@ -31,6 +31,11 @@ final class AppState: ObservableObject {
     /// SMC keys shown in the menu bar, comma separated. Empty = CPU temperature.
     @AppStorage("menuBarSensorKeys") var menuBarSensorKeys: String = ""
 
+    /// Last scan, from wherever it was started — Home, the menu bar, or the
+    /// schedule. One record so every surface reports the same thing.
+    @AppStorage("lastSmartScanAt") var lastScanAt: Double = 0
+    @AppStorage("lastSmartScanBytes") var lastScanBytes: Int = 0
+
     private let cpuMonitor = CPUMonitor()
     private let memoryMonitor = MemoryMonitor()
     private let sensors = SensorService()
@@ -42,6 +47,17 @@ final class AppState: ObservableObject {
     let fanController = FanController()
     lazy var fanControl = FanControlEngine(controller: fanController)
     let fanPresets = FanPresetStore()
+    let scheduler = SchedulerService()
+
+    /// Set by the app on launch. A background run parks its results in the
+    /// same cache Home's Smart Scan uses, so opening the window after one
+    /// shows what was found instead of scanning again. Weak, because the
+    /// navigation model outlives nothing here and must not be kept alive by it.
+    weak var navigation: Navigation?
+
+    /// True while a scan started outside the main window is in flight, so the
+    /// menu bar can show it and a second one cannot start on top of it.
+    @Published private(set) var isBackgroundScanning = false
 
     /// Screens that display the whole sensor table hold this open while they
     /// are visible. Sweeping every key costs tens of milliseconds per tick, so
@@ -115,6 +131,10 @@ final class AppState: ObservableObject {
         _ = cpuMonitor.sample()
         refresh()
         scheduleTimer()
+        scheduler.onFire = { [weak self] categories in
+            self?.runBackgroundScan(autoClean: categories, scheduled: true)
+        }
+        scheduler.start()
     }
 
     func scheduleTimer() {
@@ -168,6 +188,42 @@ final class AppState: ObservableObject {
                 self.disk = snapshot
                 self.lastDiskSample = Date()
                 self.isSamplingDisk = false
+            }
+        }
+    }
+
+    // MARK: - Background maintenance
+
+    /// Scan — and, when a schedule asked for it, clean — without the main
+    /// window. Used by the scheduler and by the menu bar's Scan Now.
+    ///
+    /// `autoClean` is trusted to already be the user's opted-in set:
+    /// `SchedulerService` is the one place that decides which categories may
+    /// ever be removed unattended, and Scan Now passes nothing at all.
+    func runBackgroundScan(autoClean: [CleaningEngine.Category] = [],
+                           scheduled: Bool = false) {
+        guard !isBackgroundScanning else {
+            // Let the schedule try again on the next tick rather than queue a
+            // second run behind the one already going.
+            if scheduled { scheduler.abandonRun() }
+            return
+        }
+        isBackgroundScanning = true
+        Task.detached(priority: .utility) {
+            let result = UnattendedRun.perform(autoClean: autoClean)
+            await MainActor.run {
+                self.isBackgroundScanning = false
+                self.navigation?.smartScanItems = result.remaining
+                self.navigation?.smartScanAt = Date()
+                self.lastScanAt = Date().timeIntervalSince1970
+                self.lastScanBytes = Int(result.foundBytes)
+                // Free space just moved; do not wait out the 30s sampling gap.
+                self.lastDiskSample = nil
+                if scheduled {
+                    self.scheduler.markRun()
+                    NotificationService.shared.postScheduledRunComplete(
+                        foundBytes: result.foundBytes, freedBytes: result.freedBytes)
+                }
             }
         }
     }
