@@ -7,6 +7,10 @@ struct SettingsView: View {
 
     private var soundEffects: Binding<Bool> { $playSounds }
 
+    private static var bundleVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
     var body: some View {
         TabView {
             general.tabItem { Label("General", systemImage: "gearshape") }
@@ -72,7 +76,11 @@ struct SettingsView: View {
             Text("TidyMac").font(.title2.weight(.bold))
             Text("System monitor, fan control & cleaner")
                 .font(.caption).foregroundStyle(.secondary)
-            Text("Version 1.0").font(.caption2).foregroundStyle(.secondary)
+            // Read from the bundle, never a literal: the release workflow sets
+            // the version from the git tag, so a hard-coded string here means
+            // every published build claims whatever number was typed last.
+            Text("Version \(Self.bundleVersion)")
+                .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
